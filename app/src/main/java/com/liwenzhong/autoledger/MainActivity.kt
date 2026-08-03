@@ -23,6 +23,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.liwenzhong.autoledger.accessibility.AccessibilitySampleStore
+import com.liwenzhong.autoledger.accessibility.AccessibilityAutoCaptureSettings
+import com.liwenzhong.autoledger.accessibility.AccessibilityServiceStatus
 import com.liwenzhong.autoledger.accessibility.WeChatAccessibilityService
 import com.liwenzhong.autoledger.capture.OcrCaptureStore
 import com.liwenzhong.autoledger.capture.OneShotCaptureService
@@ -38,6 +40,7 @@ import kotlinx.coroutines.launch
 class MainActivity : ComponentActivity() {
     private var notificationAccessGranted by mutableStateOf(false)
     private var accessibilityAccessGranted by mutableStateOf(false)
+    private var accessibilityAutoCaptureEnabled by mutableStateOf(false)
     private var pendingWeChatLaunch: Intent? = null
     private val ledgerRepository by lazy { LedgerRepository(applicationContext) }
 
@@ -64,14 +67,18 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        accessibilityAutoCaptureEnabled = AccessibilityAutoCaptureSettings.isEnabled(this)
         enableEdgeToEdge()
         setContent {
             AutoLedgerTheme {
                 AutoLedgerApp(
                     notificationAccessGranted = notificationAccessGranted,
                     accessibilityAccessGranted = accessibilityAccessGranted,
+                    accessibilityAutoCaptureEnabled = accessibilityAutoCaptureEnabled,
+                    accessibilityServiceRunning = AccessibilityServiceStatus.running,
                     onOpenNotificationSettings = ::openNotificationSettings,
                     onOpenAccessibilitySettings = ::openAccessibilitySettings,
+                    onAccessibilityAutoCaptureChanged = ::updateAccessibilityAutoCapture,
                     onOpenWeChat = ::openWeChat,
                     onStartOcrCapture = ::startOcrCapture,
                     isDebugBuild = isDebuggable,
@@ -79,6 +86,7 @@ class MainActivity : ComponentActivity() {
                     pendingTransactions = ledgerRepository.pending,
                     confirmedTransactions = ledgerRepository.confirmed,
                     onConfirmCandidate = ledgerRepository::confirm,
+                    onClearSyntheticTransactions = ledgerRepository::deleteSyntheticTransactions,
                 )
             }
         }
@@ -87,6 +95,7 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         AccessibilitySampleStore.stopOnAppResume()
+        accessibilityAutoCaptureEnabled = AccessibilityAutoCaptureSettings.isEnabled(this)
         notificationAccessGranted = getSystemService(NotificationManager::class.java)
             .isNotificationListenerAccessGranted(
                 ComponentName(this, WeChatNotificationListenerService::class.java),
@@ -111,6 +120,12 @@ class MainActivity : ComponentActivity() {
         } catch (_: ActivityNotFoundException) {
             startActivity(Intent(Settings.ACTION_SETTINGS))
         }
+    }
+
+    private fun updateAccessibilityAutoCapture(enabled: Boolean) {
+        AccessibilityAutoCaptureSettings.setEnabled(this, enabled)
+        accessibilityAutoCaptureEnabled = enabled
+        if (!enabled) AccessibilitySampleStore.cancel()
     }
 
     private fun openWeChat() {

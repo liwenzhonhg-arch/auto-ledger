@@ -5,7 +5,7 @@ import org.junit.Test
 
 class OcrTextFormatterTest {
     @Test
-    fun `normalizes trims deduplicates and bounds OCR lines`() {
+    fun `normalizes trims preserves layout and bounds OCR lines`() {
         val longLine = "商".repeat(240)
         val text = buildString {
             appendLine("  微信支付  ")
@@ -18,7 +18,8 @@ class OcrTextFormatterTest {
         val lines = OcrTextFormatter.lines(text)
 
         assertEquals("微信支付", lines.first())
-        assertEquals(200, lines[1].length)
+        assertEquals("微信支付", lines[1])
+        assertEquals(200, lines[2].length)
         assertEquals(80, lines.size)
     }
 }

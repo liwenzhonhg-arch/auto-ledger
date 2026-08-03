@@ -6,9 +6,8 @@ import org.junit.Test
 
 class NotificationCaptureGateTest {
     @Test
-    fun capturesArmedWeChatNotificationsIncludingGroupSummaries() {
-        assertTrue(NotificationCaptureGate.shouldCapture("com.tencent.mm", armed = true))
-        assertFalse(NotificationCaptureGate.shouldCapture("com.tencent.mm", armed = false))
-        assertFalse(NotificationCaptureGate.shouldCapture("com.example.other", armed = true))
+    fun acceptsWeChatInBackgroundAndRejectsOtherPackages() {
+        assertTrue(NotificationCaptureGate.shouldCapture("com.tencent.mm"))
+        assertFalse(NotificationCaptureGate.shouldCapture("com.example.other"))
     }
 }

@@ -9,7 +9,6 @@ internal object OcrTextFormatter {
             .map(String::trim)
             .filter(String::isNotEmpty)
             .map { it.take(MAX_LINE_LENGTH) }
-            .distinct()
             .take(MAX_LINES)
             .toList()
 }

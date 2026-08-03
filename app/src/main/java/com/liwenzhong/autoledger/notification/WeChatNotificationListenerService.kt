@@ -16,8 +16,7 @@ import kotlinx.coroutines.launch
 private const val WECHAT_PACKAGE = "com.tencent.mm"
 
 internal object NotificationCaptureGate {
-    fun shouldCapture(packageName: String, armed: Boolean): Boolean =
-        packageName == WECHAT_PACKAGE && armed
+    fun shouldCapture(packageName: String): Boolean = packageName == WECHAT_PACKAGE
 }
 
 data class NotificationSample(
@@ -64,9 +63,14 @@ class WeChatNotificationListenerService : NotificationListenerService() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val repository by lazy { LedgerRepository(applicationContext) }
 
+    override fun onListenerConnected() {
+        super.onListenerConnected()
+        activeNotifications.orEmpty().forEach(::onNotificationPosted)
+    }
+
     override fun onNotificationPosted(sbn: StatusBarNotification) {
         val notification = sbn.notification
-        if (!NotificationCaptureGate.shouldCapture(sbn.packageName, NotificationSampleStore.armed)) {
+        if (!NotificationCaptureGate.shouldCapture(sbn.packageName)) {
             return
         }
 
@@ -81,9 +85,8 @@ class WeChatNotificationListenerService : NotificationListenerService() {
                 ?.mapNotNull { it?.toString()?.trim()?.takeIf(String::isNotEmpty) }
                 .orEmpty(),
         )
-        if (captureNotificationSample(sample)) {
-            serviceScope.launch { repository.ingest(sample) }
-        }
+        captureNotificationSample(sample)
+        serviceScope.launch { repository.ingest(sample) }
     }
 
     override fun onDestroy() {

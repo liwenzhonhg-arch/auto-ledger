@@ -2,7 +2,7 @@
     <string name="app_name">Auto Ledger</string>
     <string name="notification_listener_label">Auto Ledger 通知采集</string>
     <string name="accessibility_service_label">Auto Ledger 微信只读采集</string>
-    <string name="accessibility_service_description">仅在用户主动开始一次采集后，读取微信当前可见交易页面文字；不会点击、输入、滚动或联网。</string>
+    <string name="accessibility_service_description">开启微信自动记账后，只读微信前台界面；文字不可读时截取单帧并在本机识别。不会点击、输入、滚动或联网。</string>
     <string name="capture_notification_channel">临时屏幕采集</string>
     <string name="capture_notification_title">正在读取当前微信页面</string>
 </resources>

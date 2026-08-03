@@ -79,6 +79,9 @@ interface TransactionDao {
         counterparty: String,
         category: String,
     ): Int
+
+    @Query("DELETE FROM transactions WHERE counterparty = '测试商户'")
+    suspend fun deleteSyntheticTransactions(): Int
 }
 
 @Database(
@@ -114,6 +117,10 @@ class LedgerRepository(context: Context) {
 
     suspend fun ingest(sample: NotificationSample): IngestResult {
         val candidate = WeChatNotificationParser.parse(sample) ?: return IngestResult.IGNORED
+        return ingest(candidate)
+    }
+
+    suspend fun ingest(candidate: TransactionCandidate): IngestResult {
         return if (dao.insert(candidate.toEntity()) == -1L) {
             IngestResult.DUPLICATE
         } else {
@@ -135,6 +142,8 @@ class LedgerRepository(context: Context) {
             category = category.trim().ifEmpty { "未分类" },
         ) == 1
     }
+
+    suspend fun deleteSyntheticTransactions(): Int = dao.deleteSyntheticTransactions()
 }
 
 private fun TransactionCandidate.toEntity() = TransactionEntity(
