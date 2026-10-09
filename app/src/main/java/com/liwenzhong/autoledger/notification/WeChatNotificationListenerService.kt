@@ -15,6 +15,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import com.liwenzhong.autoledger.capture.CaptureDiagnostics
+import com.liwenzhong.autoledger.capture.CaptureOutcome
+import com.liwenzhong.autoledger.capture.CaptureSource
 
 private const val WECHAT_PACKAGE = "com.tencent.mm"
 
@@ -123,6 +126,7 @@ class WeChatNotificationListenerService : NotificationListenerService() {
         }
 
         val extras = notification.extras
+        CaptureDiagnostics.report(CaptureSource.NOTIFICATION, CaptureOutcome.RECEIVED)
         val sample = NotificationSample(
             postedAtMillis = sbn.postTime,
             title = extras.text(Notification.EXTRA_TITLE),

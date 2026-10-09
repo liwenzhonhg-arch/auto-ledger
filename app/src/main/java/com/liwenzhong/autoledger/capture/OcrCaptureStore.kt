@@ -29,14 +29,17 @@ object OcrCaptureStore {
     }
 
     internal fun capturing() {
+        CaptureDiagnostics.report(CaptureSource.MANUAL, CaptureOutcome.RECEIVED)
         state = OcrCaptureState(status = OcrCaptureStatus.CAPTURING)
     }
 
     internal fun recognizing() {
+        CaptureDiagnostics.report(CaptureSource.MANUAL, CaptureOutcome.RECOGNIZING)
         state = OcrCaptureState(status = OcrCaptureStatus.RECOGNIZING)
     }
 
     internal fun success(lines: List<String>) {
+        CaptureDiagnostics.report(CaptureSource.MANUAL, CaptureOutcome.SAMPLE_ONLY)
         state = OcrCaptureState(
             status = OcrCaptureStatus.SUCCESS,
             capturedAtMillis = System.currentTimeMillis(),
@@ -45,6 +48,7 @@ object OcrCaptureStore {
     }
 
     fun fail(message: String) {
+        CaptureDiagnostics.report(CaptureSource.MANUAL, CaptureOutcome.CAPTURE_FAILED)
         state = OcrCaptureState(status = OcrCaptureStatus.ERROR, error = message)
     }
 

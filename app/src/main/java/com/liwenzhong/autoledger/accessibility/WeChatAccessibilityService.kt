@@ -19,6 +19,10 @@ import androidx.compose.runtime.setValue
 import com.liwenzhong.autoledger.MainActivity
 import com.liwenzhong.autoledger.R
 import com.liwenzhong.autoledger.capture.OfflineOcrRecognizer
+import com.liwenzhong.autoledger.capture.CaptureDiagnostics
+import com.liwenzhong.autoledger.capture.CaptureOutcome
+import com.liwenzhong.autoledger.capture.CaptureSource
+import com.liwenzhong.autoledger.parser.ScreenRejection
 import com.liwenzhong.autoledger.parser.TransactionCandidate
 import com.liwenzhong.autoledger.parser.WeChatScreenParser
 import com.liwenzhong.autoledger.repository.IngestResult
@@ -27,6 +31,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -117,12 +122,21 @@ object AccessibilitySampleStore {
 }
 
 class WeChatAccessibilityService : AccessibilityService() {
-    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate +
+        CoroutineExceptionHandler { _, _ -> report(CaptureOutcome.CAPTURE_FAILED) })
     private val ocrExecutor = Executors.newSingleThreadExecutor()
     private val repository by lazy { LedgerRepository(applicationContext) }
     private var pendingCapture: Job? = null
     private var screenshotInFlight = false
     private var screenshotRequestedWhileBusy = false
+    private var destroyed = false
+
+    private fun report(outcome: CaptureOutcome) = CaptureDiagnostics.report(CaptureSource.SCREEN, outcome)
+
+    private fun captureStillAllowed(): Boolean = !destroyed &&
+        !getSystemService(KeyguardManager::class.java).isDeviceLocked &&
+        (AccessibilityAutoCaptureSettings.isEnabled(this) || AccessibilitySampleStore.armed) &&
+        rootInActiveWindow?.packageName?.toString() == WECHAT_PACKAGE
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -145,8 +159,11 @@ class WeChatAccessibilityService : AccessibilityService() {
     }
 
     private fun captureSettledWindow(eventPackageName: String) {
+        if (destroyed || getSystemService(KeyguardManager::class.java).isDeviceLocked) return
         val autoCaptureEnabled = AccessibilityAutoCaptureSettings.isEnabled(this)
+        if (!autoCaptureEnabled && !AccessibilitySampleStore.armed) return
         val root = rootInActiveWindow ?: run {
+            report(CaptureOutcome.NO_WINDOW)
             Log.d(CAPTURE_LOG_TAG, "capture_skipped no_root")
             return
         }
@@ -165,6 +182,7 @@ class WeChatAccessibilityService : AccessibilityService() {
         }
 
         val lines = linkedSetOf<String>()
+        report(CaptureOutcome.RECEIVED)
         collectVisibleText(root, lines)
         if (lines.isNotEmpty()) {
             val sample = AccessibilitySample(
@@ -176,7 +194,7 @@ class WeChatAccessibilityService : AccessibilityService() {
             Log.d(CAPTURE_LOG_TAG, "text_capture lines=${lines.size} transaction=${candidate != null}")
             if (candidate != null) {
                 AccessibilitySampleStore.capture(sample)
-                if (autoCaptureEnabled) ingest(candidate)
+                if (autoCaptureEnabled) ingest(candidate) else report(CaptureOutcome.SAMPLE_ONLY)
                 return
             }
         }
@@ -185,8 +203,8 @@ class WeChatAccessibilityService : AccessibilityService() {
     }
 
     private fun requestScreenshot() {
-        if (getSystemService(KeyguardManager::class.java).isDeviceLocked) {
-            Log.d(CAPTURE_LOG_TAG, "screenshot_skipped device_locked")
+        if (!captureStillAllowed()) {
+            report(CaptureOutcome.PAUSED)
             return
         }
         if (screenshotInFlight) {
@@ -201,40 +219,55 @@ class WeChatAccessibilityService : AccessibilityService() {
                 mainExecutor,
                 object : TakeScreenshotCallback {
                 override fun onSuccess(screenshot: ScreenshotResult) {
-                    if (getSystemService(KeyguardManager::class.java).isDeviceLocked) {
+                    if (!captureStillAllowed()) {
                         screenshot.hardwareBuffer.close()
+                        report(CaptureOutcome.PAUSED)
                         finishScreenshot("screenshot_skipped device_locked")
                         return
                     }
-                    val bitmap = screenshot.toSoftwareBitmap()
+                    val bitmap = runCatching { screenshot.toSoftwareBitmap() }.getOrNull()
                     if (bitmap == null) {
+                        report(CaptureOutcome.CAPTURE_FAILED)
                         finishScreenshot("screenshot_failed bitmap_unavailable")
                         return
                     }
                     runCatching {
+                        report(CaptureOutcome.RECOGNIZING)
                         ocrExecutor.execute {
                             val lines = runCatching {
-                                OfflineOcrRecognizer(applicationContext).recognize(bitmap)
+                                try {
+                                    OfflineOcrRecognizer(applicationContext).recognize(bitmap)
+                                } finally {
+                                    bitmap.recycle()
+                                }
                             }
-                            bitmap.recycle()
                             mainExecutor.execute {
-                                lines.onSuccess(::handleOcrLines)
-                                    .onFailure { Log.d(CAPTURE_LOG_TAG, "ocr_failed") }
-                                finishScreenshot()
+                                try {
+                                    if (!captureStillAllowed()) report(CaptureOutcome.PAUSED)
+                                    else lines.onSuccess(::handleOcrLines)
+                                        .onFailure { report(CaptureOutcome.OCR_FAILED) }
+                                } catch (_: Exception) {
+                                    report(CaptureOutcome.OCR_FAILED)
+                                } finally {
+                                    finishScreenshot()
+                                }
                             }
                         }
                     }.onFailure {
                         bitmap.recycle()
+                        report(CaptureOutcome.OCR_FAILED)
                         finishScreenshot("ocr_executor_unavailable")
                     }
                 }
 
                 override fun onFailure(errorCode: Int) {
+                    report(CaptureOutcome.CAPTURE_FAILED)
                     finishScreenshot("screenshot_failed code=$errorCode")
                 }
             },
             )
         }.onFailure {
+            report(CaptureOutcome.CAPTURE_FAILED)
             finishScreenshot("screenshot_failed request_rejected")
         }
     }
@@ -246,17 +279,30 @@ class WeChatAccessibilityService : AccessibilityService() {
             lines = lines,
         )
         AccessibilitySampleStore.capture(sample)
-        val candidate = WeChatScreenParser.parse(lines, sample.capturedAtMillis)
+        val result = WeChatScreenParser.inspect(lines, sample.capturedAtMillis)
+        val candidate = result.candidate
         Log.d(CAPTURE_LOG_TAG, "ocr_complete lines=${lines.size} transaction=${candidate != null}")
         if (AccessibilityAutoCaptureSettings.isEnabled(this) && candidate != null) {
             ingest(candidate)
+        } else {
+            report(when (result.rejection) {
+                ScreenRejection.MULTIPLE_BILLS -> CaptureOutcome.MULTIPLE_BILLS
+                ScreenRejection.AMOUNT_UNCLEAR -> CaptureOutcome.AMOUNT_UNCLEAR
+                ScreenRejection.NOT_TRANSACTION -> CaptureOutcome.NOT_TRANSACTION
+                null -> CaptureOutcome.SAMPLE_ONLY
+            })
         }
     }
 
     private fun ingest(candidate: TransactionCandidate) {
         serviceScope.launch(Dispatchers.IO) {
+            if (!AccessibilityAutoCaptureSettings.isEnabled(this@WeChatAccessibilityService)) {
+                report(CaptureOutcome.PAUSED)
+                return@launch
+            }
             if (repository.ingest(candidate) == IngestResult.ADDED) {
-                mainExecutor.execute { notifyPendingTransaction() }
+                // The record is already saved; a disabled notification must not crash the service.
+                mainExecutor.execute { runCatching { notifyPendingTransaction() } }
             }
         }
     }
@@ -298,7 +344,7 @@ class WeChatAccessibilityService : AccessibilityService() {
     private fun finishScreenshot(logMessage: String? = null) {
         logMessage?.let { Log.d(CAPTURE_LOG_TAG, it) }
         screenshotInFlight = false
-        if (screenshotRequestedWhileBusy) {
+        if (screenshotRequestedWhileBusy && !destroyed) {
             screenshotRequestedWhileBusy = false
             pendingCapture = serviceScope.launch {
                 delay(SETTLE_DELAY_MILLIS)
@@ -315,23 +361,25 @@ class WeChatAccessibilityService : AccessibilityService() {
     }
 
     override fun onDestroy() {
+        destroyed = true
         pendingCapture?.cancel()
         serviceScope.cancel()
-        ocrExecutor.shutdownNow()
+        // Let any accepted OCR task recycle the bitmap it owns.
+        ocrExecutor.shutdown()
         AccessibilityServiceStatus.disconnected()
         super.onDestroy()
     }
 }
 
 private fun AccessibilityService.ScreenshotResult.toSoftwareBitmap(): Bitmap? {
-    val hardwareBitmap = Bitmap.wrapHardwareBuffer(hardwareBuffer, colorSpace) ?: run {
-        hardwareBuffer.close()
-        return null
-    }
     return try {
-        hardwareBitmap.copy(Bitmap.Config.ARGB_8888, false)
+        val hardwareBitmap = Bitmap.wrapHardwareBuffer(hardwareBuffer, colorSpace) ?: return null
+        try {
+            hardwareBitmap.copy(Bitmap.Config.ARGB_8888, false)
+        } finally {
+            hardwareBitmap.recycle()
+        }
     } finally {
-        hardwareBitmap.recycle()
         hardwareBuffer.close()
     }
 }
@@ -339,7 +387,7 @@ private fun AccessibilityService.ScreenshotResult.toSoftwareBitmap(): Bitmap? {
 private fun collectVisibleText(node: AccessibilityNodeInfo, lines: MutableSet<String>) {
     if (lines.size >= MAX_LINES) return
 
-    sequenceOf(node.text, node.contentDescription)
+    if (node.isVisibleToUser) sequenceOf(node.text, node.contentDescription)
         .mapNotNull { it?.toString()?.trim()?.takeIf(String::isNotEmpty) }
         .map { it.take(MAX_LINE_LENGTH) }
         .forEach(lines::add)

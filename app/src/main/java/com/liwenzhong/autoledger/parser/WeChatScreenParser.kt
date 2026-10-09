@@ -4,41 +4,63 @@ import java.security.MessageDigest
 
 internal const val WECHAT_SCREEN_SOURCE = "微信界面 OCR"
 
+enum class ScreenRejection { NOT_TRANSACTION, MULTIPLE_BILLS, AMOUNT_UNCLEAR }
+data class ScreenParseResult(val candidate: TransactionCandidate? = null, val rejection: ScreenRejection? = null)
+
 object WeChatScreenParser {
     private val markerPattern = Regex("微信支付|支付成功|付款成功|退款到账|收款成功|交易详情")
     private val completedTransactionPattern = Regex("支付成功|付款成功|退款到账|收款成功")
     private val incomePattern = Regex("退款|到账|收款成功")
     private val amountPattern = Regex("(?:[￥¥]|[xX](?:[yY])?)\\s*(\\d+)(?:[.,](\\d{1,2}))?")
+    private val signedExpensePattern = Regex("^[-−－]\\s*(\\d+)[.,](\\d{2})$")
 
     fun parse(lines: List<String>, capturedAtMillis: Long): TransactionCandidate? {
+        return inspect(lines, capturedAtMillis).candidate
+    }
+
+    fun inspect(lines: List<String>, capturedAtMillis: Long): ScreenParseResult {
         val text = lines.joinToString(" ")
-        if (!markerPattern.containsMatchIn(text)) return null
-        val visibleBillCount = lines.count {
+        val compactLines = lines.map { it.replace(Regex("\\s+"), "") }
+        val markerText = compactLines.joinToString("")
+        if (!markerPattern.containsMatchIn(markerText)) return ScreenParseResult(rejection = ScreenRejection.NOT_TRANSACTION)
+        val visibleBillCount = compactLines.count {
             it.contains("交易详情") || it.contains("账单详情")
         }
-        if (visibleBillCount > 1 ||
-            (visibleBillCount == 0 && !completedTransactionPattern.containsMatchIn(text))
-        ) return null
+        if (visibleBillCount > 1) return ScreenParseResult(rejection = ScreenRejection.MULTIPLE_BILLS)
+        if (visibleBillCount == 0 && !completedTransactionPattern.containsMatchIn(markerText)) {
+            return ScreenParseResult(rejection = ScreenRejection.NOT_TRANSACTION)
+        }
 
-        val amounts = amountPattern.findAll(text)
+        // Observed single payment-detail layout: a standalone negative amount above the status fields.
+        // Do not treat arbitrary signed numbers in chats, dates or order IDs as money.
+        val statusIndex = compactLines.indexOfFirst { it.startsWith("当前状态") }
+        val signedHeader = if (statusIndex > 0 && markerText.contains("当前状态支付成功") &&
+            markerText.contains("支付时间") && Regex("[支文]付方式").containsMatchIn(markerText)) {
+            lines.take(statusIndex).mapNotNull { signedExpensePattern.matchEntire(it.trim()) }
+        } else emptyList()
+        if (signedHeader.size > 1) return ScreenParseResult(rejection = ScreenRejection.AMOUNT_UNCLEAR)
+        val amounts = (amountPattern.findAll(text)
             .mapNotNull(::amountCents)
+            .toList() + signedHeader.mapNotNull(::amountCents))
             .distinct()
-            .toList()
-        if (amounts.size != 1) return null
+        if (amounts.size != 1 || amounts.single() <= 0) return ScreenParseResult(rejection = ScreenRejection.AMOUNT_UNCLEAR)
 
-        val direction = if (incomePattern.containsMatchIn(text)) {
+        val direction = if (signedHeader.isNotEmpty()) TransactionDirection.EXPENSE else if (incomePattern.containsMatchIn(markerText)) {
             TransactionDirection.INCOME
         } else {
             TransactionDirection.EXPENSE
         }
-        return TransactionCandidate(
-            fingerprint = fingerprint(lines, direction, amounts.single()),
+        return ScreenParseResult(candidate = TransactionCandidate(
+            fingerprint = fingerprint(lines.map { line ->
+                if (signedHeader.isNotEmpty() && signedExpensePattern.matches(line.trim()))
+                    line.trim().replaceFirst(Regex("^[-−－]"), "¥") else line
+            }, direction, amounts.single()),
             occurredAtMillis = capturedAtMillis,
             amountCents = amounts.single(),
             direction = direction,
             counterparty = "未确定",
             source = WECHAT_SCREEN_SOURCE,
-        )
+        ))
     }
 
     private fun amountCents(match: MatchResult): Long? {
@@ -58,7 +80,7 @@ object WeChatScreenParser {
         val amountLine = lines.indexOfFirst(amountPattern::containsMatchIn)
         val stableLines = if (amountLine >= 0) {
             lines.subList(
-                (amountLine - 2).coerceAtLeast(firstWeChatLine),
+                (amountLine - 2).coerceAtLeast(0).coerceAtLeast(firstWeChatLine.coerceAtMost(amountLine)),
                 (amountLine + 3).coerceAtMost(lines.size),
             )
         } else {

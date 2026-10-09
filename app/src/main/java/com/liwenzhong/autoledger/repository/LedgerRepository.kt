@@ -20,11 +20,16 @@ import com.liwenzhong.autoledger.parser.WECHAT_SCREEN_SOURCE
 import com.liwenzhong.autoledger.parser.WeChatNotificationParser
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.CancellationException
+import com.liwenzhong.autoledger.capture.CaptureDiagnostics
+import com.liwenzhong.autoledger.capture.CaptureOutcome
+import com.liwenzhong.autoledger.capture.CaptureSource
 
 enum class IngestResult {
     ADDED,
     DUPLICATE,
     IGNORED,
+    FAILED,
 }
 
 @Entity(
@@ -134,11 +139,18 @@ class LedgerRepository internal constructor(private val database: AutoLedgerData
         dao.observeConfirmed().map { rows -> rows.map(TransactionEntity::toCandidate) }
 
     suspend fun ingest(sample: NotificationSample): IngestResult {
-        val candidate = WeChatNotificationParser.parse(sample) ?: return IngestResult.IGNORED
-        return ingest(candidate)
+        return recordIngestion(CaptureSource.NOTIFICATION) {
+            val candidate = WeChatNotificationParser.parse(sample) ?: return@recordIngestion IngestResult.IGNORED
+            insertCandidate(candidate)
+        }
     }
 
     suspend fun ingest(candidate: TransactionCandidate): IngestResult {
+        val source = if (candidate.source == WECHAT_SCREEN_SOURCE) CaptureSource.SCREEN else CaptureSource.NOTIFICATION
+        return recordIngestion(source) { insertCandidate(candidate) }
+    }
+
+    private suspend fun insertCandidate(candidate: TransactionCandidate): IngestResult {
         val entity = candidate.toEntity()
         val insertedId = if (candidate.source == WECHAT_SCREEN_SOURCE) {
             database.withTransaction {
@@ -178,6 +190,24 @@ class LedgerRepository internal constructor(private val database: AutoLedgerData
     }
 
     suspend fun deleteSyntheticTransactions(): Int = dao.deleteSyntheticTransactions()
+}
+
+internal suspend fun recordIngestion(source: CaptureSource, write: suspend () -> IngestResult): IngestResult {
+    val result = try {
+        write()
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: Exception) {
+        // Do not expose exception text: SQLite errors can contain bound values.
+        IngestResult.FAILED
+    }
+    CaptureDiagnostics.report(source, when (result) {
+        IngestResult.ADDED -> CaptureOutcome.SAVED
+        IngestResult.DUPLICATE -> CaptureOutcome.DUPLICATE
+        IngestResult.IGNORED -> CaptureOutcome.NOT_TRANSACTION
+        IngestResult.FAILED -> CaptureOutcome.SAVE_FAILED
+    })
+    return result
 }
 
 internal const val SCREEN_DUPLICATE_WINDOW_MILLIS = 90_000L

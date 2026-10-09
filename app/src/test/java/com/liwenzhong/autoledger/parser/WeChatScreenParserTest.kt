@@ -6,6 +6,39 @@ import org.junit.Test
 
 class WeChatScreenParserTest {
     @Test
+    fun parsesObservedSignedExpenseDetailWithSpacedOcrLabels() {
+        val lines = listOf("全部账单", "测试商户", "−12.34", "当前 状态", "支付 成功",
+            "支付 时间", "2026年1月2日 12:30:00", "支付方式", "零钱", "交易单号", "000000000000")
+        val candidate = WeChatScreenParser.parse(lines, 100L)!!
+        assertEquals(1234L, candidate.amountCents)
+        assertEquals(TransactionDirection.EXPENSE, candidate.direction)
+        assertEquals(1234L, WeChatScreenParser.parse(lines.map {
+            if (it == "支付方式") "文付方式" else it
+        }, 100L)?.amountCents)
+        assertNull(WeChatScreenParser.parse(lines.filterNot { it == "支付方式" }, 100L))
+        assertNull(WeChatScreenParser.parse(lines.map { if (it == "−12.34") "−0.00" else it }, 100L))
+        assertNull(WeChatScreenParser.parse(lines + "¥99.00", 100L))
+        assertNull(WeChatScreenParser.parse(listOf("支付成功", "-12.34", "普通聊天"), 100L))
+        assertNull(WeChatScreenParser.parse(listOf("-12.34") + lines, 100L))
+    }
+
+    @Test
+    fun amountBeforeLateWeChatMarkerDoesNotBreakSubsequentParsing() {
+        val reordered = listOf("¥20.80", "支付成功", "其他文字", "返回", "更多", "微信支付")
+        assertEquals(2_080L, WeChatScreenParser.parse(reordered, 100L)?.amountCents)
+        assertEquals(2_080L, WeChatScreenParser.parse(listOf("微信支付", "支付成功", "¥20.80"), 101L)?.amountCents)
+    }
+
+    @Test
+    fun explainsRejectionsWithoutReturningRawText() {
+        assertEquals(ScreenRejection.NOT_TRANSACTION,
+            WeChatScreenParser.inspect(listOf("微信支付", "付款码"), 1L).rejection)
+        assertEquals(ScreenRejection.AMOUNT_UNCLEAR,
+            WeChatScreenParser.inspect(listOf("支付成功"), 1L).rejection)
+        assertEquals(ScreenRejection.MULTIPLE_BILLS,
+            WeChatScreenParser.inspect(listOf("微信支付", "交易详情", "账单详情", "¥12.34"), 1L).rejection)
+    }
+    @Test
     fun parsesSingleOcrAmountAndRejectsAmbiguousBillLists() {
         val payment = WeChatScreenParser.parse(
             lines = listOf("微信支付", "支付成功", "xY20.80", "交易详情"),
