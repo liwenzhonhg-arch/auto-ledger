@@ -4,6 +4,9 @@ import android.content.Context
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.liwenzhong.autoledger.parser.WeChatScreenParser
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -88,5 +91,26 @@ class TransactionDatabaseTest {
         assertEquals(1, dao.deleteSyntheticTransactions())
         assertEquals(null, dao.findByFingerprint("synthetic"))
         assertEquals("未确定", dao.findByFingerprint("real")?.counterparty)
+    }
+
+    @Test
+    fun scopesScreenDuplicatesAcrossRepositoryInstancesAndConcurrentCaptures() = runBlocking {
+        val candidate = WeChatScreenParser.parse(
+            listOf("微信支付", "支付成功", "测试商户", "¥3.00", "交易详情"),
+            capturedAtMillis = 59_900L,
+        )!!
+        val repository = LedgerRepository(database)
+        assertEquals(IngestResult.ADDED, repository.ingest(candidate))
+        val restarted = LedgerRepository(database)
+        assertEquals(IngestResult.DUPLICATE, restarted.ingest(candidate.copy(occurredAtMillis = 60_100L)))
+        assertEquals(IngestResult.DUPLICATE, restarted.ingest(candidate.copy(occurredAtMillis = 59_800L)))
+
+        val later = candidate.copy(occurredAtMillis = 149_900L)
+        val results = listOf(
+            async { repository.ingest(later) },
+            async { restarted.ingest(later.copy(occurredAtMillis = 150_000L)) },
+        ).awaitAll()
+        assertEquals(1, results.count { it == IngestResult.ADDED })
+        assertEquals(1, results.count { it == IngestResult.DUPLICATE })
     }
 }

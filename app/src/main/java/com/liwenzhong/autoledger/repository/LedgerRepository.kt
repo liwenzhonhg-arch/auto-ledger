@@ -11,10 +11,12 @@ import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.withTransaction
 import com.liwenzhong.autoledger.notification.NotificationSample
 import com.liwenzhong.autoledger.parser.MAX_TRANSACTION_AMOUNT_CENTS
 import com.liwenzhong.autoledger.parser.TransactionCandidate
 import com.liwenzhong.autoledger.parser.TransactionDirection
+import com.liwenzhong.autoledger.parser.WECHAT_SCREEN_SOURCE
 import com.liwenzhong.autoledger.parser.WeChatNotificationParser
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -63,6 +65,20 @@ interface TransactionDao {
     suspend fun findByFingerprint(fingerprint: String): TransactionEntity?
 
     @Query(
+        "SELECT * FROM transactions WHERE source = :source " +
+            "AND (fingerprint = :contentFingerprint OR fingerprint GLOB :occurrencePattern) " +
+            "AND occurredAtMillis > :windowStartMillis AND occurredAtMillis < :windowEndMillis " +
+            "ORDER BY occurredAtMillis DESC, id DESC LIMIT 1",
+    )
+    suspend fun findLatestScreenObservation(
+        source: String,
+        contentFingerprint: String,
+        occurrencePattern: String,
+        windowStartMillis: Long,
+        windowEndMillis: Long,
+    ): TransactionEntity?
+
+    @Query(
         """
         UPDATE transactions
         SET amountCents = :amountCents,
@@ -107,8 +123,10 @@ abstract class AutoLedgerDatabase : RoomDatabase() {
     }
 }
 
-class LedgerRepository(context: Context) {
-    private val dao = AutoLedgerDatabase.get(context).transactionDao()
+class LedgerRepository internal constructor(private val database: AutoLedgerDatabase) {
+    constructor(context: Context) : this(AutoLedgerDatabase.get(context))
+
+    private val dao = database.transactionDao()
 
     val pending: Flow<List<TransactionCandidate>> =
         dao.observePending().map { rows -> rows.map(TransactionEntity::toCandidate) }
@@ -121,7 +139,23 @@ class LedgerRepository(context: Context) {
     }
 
     suspend fun ingest(candidate: TransactionCandidate): IngestResult {
-        return if (dao.insert(candidate.toEntity()) == -1L) {
+        val entity = candidate.toEntity()
+        val insertedId = if (candidate.source == WECHAT_SCREEN_SOURCE) {
+            database.withTransaction {
+                val contentFingerprint = candidate.fingerprint.substringBefore(':')
+                val previous = dao.findLatestScreenObservation(
+                    source = WECHAT_SCREEN_SOURCE,
+                    contentFingerprint = contentFingerprint,
+                    occurrencePattern = "$contentFingerprint:*",
+                    windowStartMillis = candidate.occurredAtMillis - SCREEN_DUPLICATE_WINDOW_MILLIS,
+                    windowEndMillis = candidate.occurredAtMillis + SCREEN_DUPLICATE_WINDOW_MILLIS,
+                )
+                dao.insert(screenObservationForInsert(entity, previous))
+            }
+        } else {
+            dao.insert(entity)
+        }
+        return if (insertedId == -1L) {
             IngestResult.DUPLICATE
         } else {
             IngestResult.ADDED
@@ -144,6 +178,25 @@ class LedgerRepository(context: Context) {
     }
 
     suspend fun deleteSyntheticTransactions(): Int = dao.deleteSyntheticTransactions()
+}
+
+internal const val SCREEN_DUPLICATE_WINDOW_MILLIS = 90_000L
+
+internal fun screenObservationForInsert(
+    candidate: TransactionEntity,
+    previous: TransactionEntity?,
+): TransactionEntity {
+    val contentFingerprint = candidate.fingerprint.substringBefore(':')
+    // ponytail: no payment ID is available; merge only a short capture burst. Reopened old bills
+    // and distinct identical payments within this window need manual verification.
+    val sameObservation = previous != null &&
+        previous.source == candidate.source &&
+        previous.fingerprint.substringBefore(':') == contentFingerprint &&
+        candidate.occurredAtMillis - previous.occurredAtMillis in
+            -(SCREEN_DUPLICATE_WINDOW_MILLIS - 1)..(SCREEN_DUPLICATE_WINDOW_MILLIS - 1)
+    return candidate.copy(
+        fingerprint = if (sameObservation) previous.fingerprint else "$contentFingerprint:${candidate.occurredAtMillis}",
+    )
 }
 
 private fun TransactionCandidate.toEntity() = TransactionEntity(

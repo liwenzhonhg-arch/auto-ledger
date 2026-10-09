@@ -1,7 +1,10 @@
 package com.liwenzhong.autoledger.ui
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -12,13 +15,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -59,8 +63,10 @@ import com.liwenzhong.autoledger.notification.NotificationSample
 import com.liwenzhong.autoledger.notification.NotificationSampleStore
 import com.liwenzhong.autoledger.parser.TransactionCandidate
 import com.liwenzhong.autoledger.parser.TransactionDirection
+import com.liwenzhong.autoledger.parser.WECHAT_SCREEN_SOURCE
 import com.liwenzhong.autoledger.parser.WeChatNotificationParser
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.flow.Flow
@@ -76,13 +82,46 @@ private data class PreviewTransaction(
     val pending: Boolean = false,
 )
 
+private data class TransactionDayGroup(
+    val key: String,
+    val label: String,
+    val expenseCents: Long,
+    val transactions: List<PreviewTransaction>,
+)
+
+private data class DailyExpenseTotal(
+    val label: String,
+    val amountCents: Long,
+)
+
+internal data class CategoryExpenseTotal(
+    val category: String,
+    val amountCents: Long,
+)
+
+private enum class ChartRange(val label: String) {
+    WEEK("周"),
+    MONTH("月"),
+    YEAR("年"),
+}
+
+private val ManualCategories = listOf(
+    "餐饮", "出行", "服饰", "日用",
+    "娱乐", "医疗", "学习", "住房",
+    "人情", "收入", "转账", "其他",
+)
+
 @Composable
 fun AutoLedgerApp(
     notificationAccessGranted: Boolean = false,
+    notificationListenerConnected: Boolean = false,
+    notificationRecoveryMessage: String? = null,
     accessibilityAccessGranted: Boolean = false,
     accessibilityAutoCaptureEnabled: Boolean = false,
     accessibilityServiceRunning: Boolean = false,
     onOpenNotificationSettings: () -> Unit = {},
+    onReconnectNotifications: () -> Unit = {},
+    onOpenAppSettings: () -> Unit = {},
     onOpenAccessibilitySettings: () -> Unit = {},
     onAccessibilityAutoCaptureChanged: (Boolean) -> Unit = {},
     onOpenWeChat: () -> Unit = {},
@@ -105,15 +144,44 @@ fun AutoLedgerApp(
     Scaffold(
         bottomBar = {
             if (!showSettings && !showPending) {
-                NavigationBar {
+                NavigationBar(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                ) {
                     tabs.forEachIndexed { index, tab ->
                         NavigationBarItem(
                             selected = selectedTab == index,
                             onClick = { selectedTab = index },
-                            icon = { Text(tab.first().toString(), fontWeight = FontWeight.Bold) },
+                            icon = {
+                                if (index == 2) {
+                                    Surface(
+                                        modifier = Modifier.size(52.dp),
+                                        shape = CircleShape,
+                                        color = CrowAmber,
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Text(
+                                                "+",
+                                                color = CrowInk,
+                                                fontSize = 30.sp,
+                                                fontWeight = FontWeight.Medium,
+                                            )
+                                        }
+                                    }
+                                } else {
+                                    Text(
+                                        if (index == 0) "账" else "图",
+                                        fontSize = 19.sp,
+                                        fontWeight = FontWeight.Bold,
+                                    )
+                                }
+                            },
                             label = { Text(tab) },
                             colors = NavigationBarItemDefaults.colors(
-                                indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                                indicatorColor = if (index == 2) {
+                                    Color.Transparent
+                                } else {
+                                    MaterialTheme.colorScheme.primaryContainer
+                                },
                             ),
                         )
                     }
@@ -124,11 +192,15 @@ fun AutoLedgerApp(
         when {
             showSettings -> NotificationCapturePage(
                     notificationAccessGranted = notificationAccessGranted,
+                    notificationListenerConnected = notificationListenerConnected,
+                    notificationRecoveryMessage = notificationRecoveryMessage,
                     accessibilityAccessGranted = accessibilityAccessGranted,
                     accessibilityAutoCaptureEnabled = accessibilityAutoCaptureEnabled,
                     accessibilityServiceRunning = accessibilityServiceRunning,
                     onBack = { showSettings = false },
                     onOpenNotificationSettings = onOpenNotificationSettings,
+                    onReconnectNotifications = onReconnectNotifications,
+                    onOpenAppSettings = onOpenAppSettings,
                     onOpenAccessibilitySettings = onOpenAccessibilitySettings,
                     onAccessibilityAutoCaptureChanged = onAccessibilityAutoCaptureChanged,
                     onOpenWeChat = onOpenWeChat,
@@ -149,12 +221,20 @@ fun AutoLedgerApp(
                 0 -> LedgerHome(
                     pending = pending,
                     confirmed = confirmed,
+                    notificationAccessGranted = notificationAccessGranted,
+                    notificationListenerConnected = notificationListenerConnected,
+                    accessibilityAccessGranted = accessibilityAccessGranted,
+                    accessibilityServiceRunning = accessibilityServiceRunning,
+                    accessibilityAutoCaptureEnabled = accessibilityAutoCaptureEnabled,
                     onPendingClick = { showPending = true },
                     onSettingsClick = { showSettings = true },
                     modifier = Modifier.padding(padding),
                 )
-                1 -> PlaceholderPage("图表", "接入真实账目后显示分类占比和收支趋势。", Modifier.padding(padding))
-                else -> PlaceholderPage("手动记账", "自动识别不是重点时，也可以在这里补记一笔。", Modifier.padding(padding))
+                1 -> LedgerCharts(
+                    transactions = pending + confirmed,
+                    modifier = Modifier.padding(padding),
+                )
+                else -> ManualLedgerPreview(Modifier.padding(padding))
             }
         }
     }
@@ -164,23 +244,32 @@ fun AutoLedgerApp(
 private fun LedgerHome(
     pending: List<TransactionCandidate>,
     confirmed: List<TransactionCandidate>,
+    notificationAccessGranted: Boolean,
+    notificationListenerConnected: Boolean,
+    accessibilityAccessGranted: Boolean,
+    accessibilityServiceRunning: Boolean,
+    accessibilityAutoCaptureEnabled: Boolean,
     onPendingClick: () -> Unit,
     onSettingsClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val transactions = pending + confirmed
+    val pendingFingerprints = pending.mapTo(mutableSetOf(), TransactionCandidate::fingerprint)
+    val transactions = (pending + confirmed)
+        .filter { isInCurrentMonth(it.occurredAtMillis) }
+        .sortedByDescending(TransactionCandidate::occurredAtMillis)
     val expenseCents = transactions
         .filter { it.direction == TransactionDirection.EXPENSE }
         .sumOf { it.amountCents ?: 0L }
     val incomeCents = transactions
         .filter { it.direction == TransactionDirection.INCOME }
         .sumOf { it.amountCents ?: 0L }
+    val dayGroups = transactionDayGroups(transactions, pendingFingerprints)
 
     LazyColumn(
         modifier = modifier
             .fillMaxSize()
-            .padding(horizontal = 18.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+            .padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         item {
             Spacer(Modifier.height(8.dp))
@@ -190,18 +279,27 @@ private fun LedgerHome(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    CrowBrandMark(Modifier.size(58.dp))
-                    Spacer(Modifier.width(14.dp))
+                    CrowBrandMark(Modifier.size(48.dp))
+                    Spacer(Modifier.width(12.dp))
                     Column {
-                        Text("Auto Ledger", fontSize = 25.sp, fontWeight = FontWeight.Bold)
+                        Text("Auto Ledger", fontSize = 23.sp, fontWeight = FontWeight.Bold)
                         Text(
                             "看见每一笔开销",
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 13.sp,
                         )
                     }
                 }
-                TextButton(onClick = onSettingsClick) {
-                    Text("设置", fontWeight = FontWeight.Medium)
+                Surface(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clickable(onClick = onSettingsClick),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    shape = CircleShape,
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text("设", fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         }
@@ -213,54 +311,82 @@ private fun LedgerHome(
                 ),
                 shape = RoundedCornerShape(28.dp),
             ) {
-                Column(
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(24.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                        .padding(22.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.Bottom,
                 ) {
-                    Text(
-                        formatCurrentMonth(),
-                        color = CrowIvory.copy(alpha = 0.72f),
-                        fontWeight = FontWeight.Medium,
-                    )
-                    Text(
-                        "本月已支出",
-                        color = CrowIvory,
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Text(
-                        formatYuan(expenseCents),
-                        color = CrowIvory,
-                        fontSize = 44.sp,
-                        fontWeight = FontWeight.Bold,
-                    )
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(
-                            "收入 ${formatYuan(incomeCents)}",
+                            formatCurrentMonth(),
                             color = CrowIvory.copy(alpha = 0.68f),
                             fontWeight = FontWeight.Medium,
                         )
-                        if (pending.isNotEmpty()) {
-                            Button(
-                                onClick = onPendingClick,
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = CrowAmber,
-                                    contentColor = CrowInk,
-                                ),
-                                shape = RoundedCornerShape(14.dp),
-                            ) {
-                                Text("待确认 ${pending.size} 笔", fontWeight = FontWeight.Bold)
-                            }
-                        } else {
-                            Text("已全部确认", color = Color(0xFF86C5BA))
-                        }
+                        Text(
+                            "本月已支出",
+                            color = CrowIvory,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Text(
+                            formatYuan(expenseCents),
+                            color = CrowIvory,
+                            fontSize = 42.sp,
+                            fontWeight = FontWeight.Bold,
+                        )
                     }
+                    Column(
+                        horizontalAlignment = Alignment.End,
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Text(
+                            "收入",
+                            color = CrowIvory.copy(alpha = 0.68f),
+                        )
+                        Text(
+                            formatYuan(incomeCents),
+                            color = CrowIvory,
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+                }
+            }
+        }
+
+        item {
+            Card(shape = RoundedCornerShape(22.dp)) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 16.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                ) {
+                    DashboardAction(
+                        modifier = Modifier.weight(1f),
+                        title = "待确认",
+                        value = "${pending.size} 笔",
+                        emphasized = pending.isNotEmpty(),
+                        onClick = onPendingClick,
+                    )
+                    DashboardAction(
+                        modifier = Modifier.weight(1f),
+                        title = "界面采集",
+                        value = accessibilityCaptureLabel(
+                            accessibilityAccessGranted,
+                            accessibilityAutoCaptureEnabled,
+                            accessibilityServiceRunning,
+                        ),
+                        onClick = onSettingsClick,
+                    )
+                    DashboardAction(
+                        modifier = Modifier.weight(1f),
+                        title = "通知读取",
+                        value = notificationConnectionLabel(notificationAccessGranted, notificationListenerConnected),
+                        onClick = onSettingsClick,
+                    )
                 }
             }
         }
@@ -271,7 +397,7 @@ private fun LedgerHome(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("最近支出", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                Text("本月账目", fontSize = 20.sp, fontWeight = FontWeight.Bold)
                 Text(
                     "${transactions.size} 笔",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -279,22 +405,476 @@ private fun LedgerHome(
             }
         }
 
-        if (transactions.isNotEmpty()) {
-            items(transactions, key = TransactionCandidate::fingerprint) { candidate ->
-                TransactionRow(candidate.toPreview(isPending = pending.any { it.fingerprint == candidate.fingerprint }))
+        if (dayGroups.isNotEmpty()) {
+            dayGroups.forEach { group ->
+                item(key = "day-${group.key}") {
+                    DayTransactionCard(group)
+                }
             }
         } else {
             item {
-                Text(
-                    "还没有支出记录。",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                Card(shape = RoundedCornerShape(22.dp)) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(22.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        Text("本月还没有账目", fontWeight = FontWeight.Bold)
+                        Text(
+                            "真实交易会自动出现在这里，也可以从下方“记一笔”进入手动记账界面。",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
             }
         }
 
         item {
             Spacer(Modifier.height(10.dp))
         }
+    }
+}
+
+@Composable
+private fun DashboardAction(
+    modifier: Modifier = Modifier,
+    title: String,
+    value: String,
+    emphasized: Boolean = false,
+    onClick: (() -> Unit)? = null,
+) {
+    Column(
+        modifier = modifier
+            .clickable(enabled = onClick != null) { onClick?.invoke() }
+            .padding(horizontal = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(5.dp),
+    ) {
+        Text(
+            value,
+            color = if (emphasized) CrowAmber else MaterialTheme.colorScheme.onSurface,
+            fontWeight = FontWeight.Bold,
+        )
+        Text(
+            title,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 12.sp,
+        )
+    }
+}
+
+@Composable
+private fun DayTransactionCard(group: TransactionDayGroup) {
+    Card(shape = RoundedCornerShape(22.dp)) {
+        Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 14.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(group.label, fontWeight = FontWeight.Bold)
+                Text(
+                    "支出 ${formatYuan(group.expenseCents)}",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 13.sp,
+                )
+            }
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            group.transactions.forEachIndexed { index, transaction ->
+                CompactTransactionRow(transaction)
+                if (index != group.transactions.lastIndex) {
+                    HorizontalDivider(
+                        modifier = Modifier.padding(start = 48.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CompactTransactionRow(transaction: PreviewTransaction) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Surface(
+            modifier = Modifier.size(38.dp),
+            shape = CircleShape,
+            color = if (transaction.pending) {
+                MaterialTheme.colorScheme.secondaryContainer
+            } else {
+                MaterialTheme.colorScheme.primaryContainer
+            },
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Text(transaction.category.take(1), fontWeight = FontWeight.Bold)
+            }
+        }
+        Spacer(Modifier.width(10.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(transaction.objectName, fontWeight = FontWeight.SemiBold)
+            Text(
+                "${transaction.category} · ${transaction.sourceAndTime}",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 12.sp,
+            )
+        }
+        Text(
+            transaction.amount,
+            color = if (transaction.income) CrowTeal else MaterialTheme.colorScheme.onSurface,
+            fontWeight = FontWeight.Bold,
+        )
+    }
+}
+
+@Composable
+private fun LedgerCharts(
+    transactions: List<TransactionCandidate>,
+    modifier: Modifier = Modifier,
+) {
+    var selectedRange by remember { mutableStateOf(ChartRange.MONTH) }
+    val visible = transactionsInRange(transactions, selectedRange)
+    val expenseTotal = visible
+        .filter { it.direction == TransactionDirection.EXPENSE }
+        .sumOf { it.amountCents ?: 0L }
+    val dailyTotals = dailyExpenseTotals(visible)
+    val categoryTotals = expenseTotalsByCategory(visible)
+    val average = if (dailyTotals.isEmpty()) 0L else expenseTotal / dailyTotals.size
+
+    LazyColumn(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        item {
+            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                CrowBrandMark(Modifier.size(48.dp))
+                Spacer(Modifier.width(12.dp))
+                Column {
+                    Text("开销分析", fontSize = 23.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        "只统计已经采集到的本地账目",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 13.sp,
+                    )
+                }
+            }
+        }
+        item {
+            Card(shape = RoundedCornerShape(18.dp)) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(5.dp),
+                ) {
+                    ChartRange.entries.forEach { range ->
+                        Surface(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable { selectedRange = range },
+                            color = if (selectedRange == range) {
+                                CrowInk
+                            } else {
+                                Color.Transparent
+                            },
+                            shape = RoundedCornerShape(14.dp),
+                        ) {
+                            Text(
+                                range.label,
+                                modifier = Modifier.padding(vertical = 10.dp),
+                                color = if (selectedRange == range) CrowIvory else MaterialTheme.colorScheme.onSurface,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        item {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = CrowInk),
+                shape = RoundedCornerShape(26.dp),
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(22.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.Bottom,
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                        Text("总支出", color = CrowIvory.copy(alpha = 0.7f))
+                        Text(
+                            formatYuan(expenseTotal),
+                            color = CrowIvory,
+                            fontSize = 36.sp,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text("有支出日均", color = CrowIvory.copy(alpha = 0.7f))
+                        Text(
+                            formatYuan(average),
+                            color = CrowIvory,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+                }
+            }
+        }
+        item {
+            Card(shape = RoundedCornerShape(22.dp)) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    Text("支出趋势", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    if (dailyTotals.isEmpty()) {
+                        Text("当前范围暂无支出", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    } else {
+                        ExpenseBars(dailyTotals.takeLast(7))
+                    }
+                }
+            }
+        }
+        item {
+            Card(shape = RoundedCornerShape(22.dp)) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                ) {
+                    Text("分类排行", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    if (categoryTotals.isEmpty()) {
+                        Text("当前范围暂无分类数据", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    } else {
+                        val maximum = categoryTotals.first().amountCents.coerceAtLeast(1L)
+                        categoryTotals.take(6).forEach { total ->
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                ) {
+                                    Text(total.category, fontWeight = FontWeight.Medium)
+                                    Text(formatYuan(total.amountCents), fontWeight = FontWeight.Bold)
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(7.dp)
+                                        .background(
+                                            MaterialTheme.colorScheme.surfaceContainerHighest,
+                                            RoundedCornerShape(50),
+                                        ),
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth(total.amountCents.toFloat() / maximum)
+                                            .height(7.dp)
+                                            .background(CrowTeal, RoundedCornerShape(50)),
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        item { Spacer(Modifier.height(10.dp)) }
+    }
+}
+
+@Composable
+private fun ExpenseBars(totals: List<DailyExpenseTotal>) {
+    val maximum = totals.maxOf(DailyExpenseTotal::amountCents).coerceAtLeast(1L)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(132.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.Bottom,
+    ) {
+        totals.forEach { total ->
+            Column(
+                modifier = Modifier.weight(1f),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Bottom,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height((12 + 88 * total.amountCents.toFloat() / maximum).dp)
+                        .background(CrowTeal, RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp)),
+                )
+                Spacer(Modifier.height(6.dp))
+                Text(total.label, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ManualLedgerPreview(modifier: Modifier = Modifier) {
+    var expense by remember { mutableStateOf(true) }
+    var selectedCategory by remember { mutableStateOf("餐饮") }
+    var amount by remember { mutableStateOf("0") }
+
+    LazyColumn(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        item {
+            Spacer(Modifier.height(8.dp))
+            Text("记一笔", fontSize = 24.sp, fontWeight = FontWeight.Bold)
+            Text(
+                "先预览录入方式，暂不保存到账本",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 13.sp,
+            )
+        }
+        item {
+            Card(shape = RoundedCornerShape(18.dp)) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(5.dp),
+                ) {
+                    listOf(true to "支出", false to "收入").forEach { (isExpense, label) ->
+                        Surface(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable { expense = isExpense },
+                            color = if (expense == isExpense) CrowInk else Color.Transparent,
+                            shape = RoundedCornerShape(14.dp),
+                        ) {
+                            Text(
+                                label,
+                                modifier = Modifier.padding(vertical = 10.dp),
+                                color = if (expense == isExpense) CrowIvory else MaterialTheme.colorScheme.onSurface,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                ManualCategories.chunked(4).forEach { row ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        row.forEach { category ->
+                            val selected = selectedCategory == category
+                            Surface(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable { selectedCategory = category },
+                                color = if (selected) CrowAmber else MaterialTheme.colorScheme.surfaceContainer,
+                                shape = RoundedCornerShape(18.dp),
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(vertical = 12.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                                ) {
+                                    Text(category.take(1), fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                                    Text(category, fontSize = 12.sp)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        item {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = CrowInk),
+                shape = RoundedCornerShape(24.dp),
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(20.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column {
+                        Text(selectedCategory, color = CrowIvory.copy(alpha = 0.7f))
+                        Text(
+                            if (expense) "支出金额" else "收入金额",
+                            color = CrowIvory,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+                    Text(
+                        "¥$amount",
+                        color = CrowIvory,
+                        fontSize = 30.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+            }
+        }
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                listOf(
+                    listOf("7", "8", "9"),
+                    listOf("4", "5", "6"),
+                    listOf("1", "2", "3"),
+                    listOf(".", "0", "⌫"),
+                ).forEach { keys ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(9.dp),
+                    ) {
+                        keys.forEach { key ->
+                            Button(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(52.dp),
+                                onClick = { amount = updateManualAmount(amount, key) },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                    contentColor = MaterialTheme.colorScheme.onSurface,
+                                ),
+                                shape = RoundedCornerShape(16.dp),
+                            ) {
+                                Text(key, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        item {
+            OutlinedButton(
+                modifier = Modifier.fillMaxWidth(),
+                onClick = {},
+                enabled = false,
+                shape = RoundedCornerShape(16.dp),
+            ) {
+                Text("保存功能下一步接入")
+            }
+        }
+        item { Spacer(Modifier.height(10.dp)) }
     }
 }
 
@@ -376,6 +956,15 @@ private fun PendingConfirmationPage(
                 singleLine = true,
             )
         }
+        if (candidate.source == WECHAT_SCREEN_SOURCE) {
+            item {
+                Text(
+                    "这笔来自页面识别，请核对实际交易时间及是否重复。相同页面只在 90 秒内合并；短时间同内容的新交易可能漏记，久后重看的旧账单可能再次出现。",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 13.sp,
+                )
+            }
+        }
         item {
             OutlinedTextField(
                 value = counterparty,
@@ -431,6 +1020,91 @@ private fun PendingConfirmationPage(
     }
 }
 
+private fun transactionDayGroups(
+    transactions: List<TransactionCandidate>,
+    pendingFingerprints: Set<String>,
+): List<TransactionDayGroup> = transactions
+    .groupBy {
+        SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(it.occurredAtMillis))
+    }
+    .map { (key, candidates) ->
+        TransactionDayGroup(
+            key = key,
+            label = SimpleDateFormat("M月d日 EEEE", Locale.getDefault())
+                .format(Date(candidates.first().occurredAtMillis)),
+            expenseCents = candidates
+                .filter { it.direction == TransactionDirection.EXPENSE }
+                .sumOf { it.amountCents ?: 0L },
+            transactions = candidates.map { it.toPreview(it.fingerprint in pendingFingerprints) },
+        )
+    }
+
+private fun isInCurrentMonth(occurredAtMillis: Long): Boolean {
+    val now = Calendar.getInstance()
+    val occurred = Calendar.getInstance().apply { timeInMillis = occurredAtMillis }
+    return now.get(Calendar.YEAR) == occurred.get(Calendar.YEAR) &&
+        now.get(Calendar.MONTH) == occurred.get(Calendar.MONTH)
+}
+
+private fun transactionsInRange(
+    transactions: List<TransactionCandidate>,
+    range: ChartRange,
+    nowMillis: Long = System.currentTimeMillis(),
+): List<TransactionCandidate> {
+    val start = Calendar.getInstance().apply {
+        timeInMillis = nowMillis
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+        when (range) {
+            ChartRange.WEEK -> add(Calendar.DAY_OF_MONTH, -6)
+            ChartRange.MONTH -> set(Calendar.DAY_OF_MONTH, 1)
+            ChartRange.YEAR -> {
+                set(Calendar.MONTH, Calendar.JANUARY)
+                set(Calendar.DAY_OF_MONTH, 1)
+            }
+        }
+    }.timeInMillis
+    return transactions.filter { it.occurredAtMillis in start..nowMillis }
+}
+
+private fun dailyExpenseTotals(transactions: List<TransactionCandidate>): List<DailyExpenseTotal> =
+    transactions
+        .filter { it.direction == TransactionDirection.EXPENSE && (it.amountCents ?: 0L) > 0L }
+        .groupBy {
+            SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(it.occurredAtMillis))
+        }
+        .entries
+        .sortedBy { it.value.first().occurredAtMillis }
+        .map { (_, candidates) ->
+            DailyExpenseTotal(
+                label = SimpleDateFormat("M/d", Locale.getDefault())
+                    .format(Date(candidates.first().occurredAtMillis)),
+                amountCents = candidates.sumOf { it.amountCents ?: 0L },
+            )
+        }
+
+internal fun expenseTotalsByCategory(
+    transactions: List<TransactionCandidate>,
+): List<CategoryExpenseTotal> = transactions
+    .filter { it.direction == TransactionDirection.EXPENSE && (it.amountCents ?: 0L) > 0L }
+    .groupBy { transactionCategoryLabel(it.category, it.direction) }
+    .map { (category, candidates) ->
+        CategoryExpenseTotal(category, candidates.sumOf { it.amountCents ?: 0L })
+    }
+    .sortedByDescending(CategoryExpenseTotal::amountCents)
+
+internal fun updateManualAmount(current: String, key: String): String = when {
+    key == "⌫" -> current.dropLast(1).ifEmpty { "0" }
+    key == "." -> if ('.' in current) current else "$current."
+    key.length != 1 || !key[0].isDigit() -> current
+    current.substringAfter('.', "").length >= 2 -> current
+    current.count(Char::isDigit) >= 9 -> current
+    current == "0" -> key
+    else -> current + key
+}
+
 private fun TransactionCandidate.toPreview(isPending: Boolean): PreviewTransaction {
     val amountText = amountCents?.let {
         (if (direction == TransactionDirection.INCOME) "+" else "-") + formatYuan(it)
@@ -456,6 +1130,19 @@ internal fun transactionCategoryLabel(
     category
 }
 
+internal fun notificationConnectionLabel(granted: Boolean, connected: Boolean): String = when {
+    !granted -> "未授权"
+    !connected -> "未连接"
+    else -> "已连接"
+}
+
+internal fun accessibilityCaptureLabel(granted: Boolean, enabled: Boolean, running: Boolean): String = when {
+    !granted -> "未授权"
+    !enabled -> "未开启"
+    !running -> "未连接"
+    else -> "运行中"
+}
+
 private fun formatYuan(cents: Long): String =
     "¥${cents / 100}.${(cents % 100).toString().padStart(2, '0')}"
 
@@ -471,11 +1158,15 @@ private fun formatCurrentMonth(): String =
 @Composable
 private fun NotificationCapturePage(
     notificationAccessGranted: Boolean,
+    notificationListenerConnected: Boolean,
+    notificationRecoveryMessage: String?,
     accessibilityAccessGranted: Boolean,
     accessibilityAutoCaptureEnabled: Boolean,
     accessibilityServiceRunning: Boolean,
     onBack: () -> Unit,
     onOpenNotificationSettings: () -> Unit,
+    onReconnectNotifications: () -> Unit,
+    onOpenAppSettings: () -> Unit,
     onOpenAccessibilitySettings: () -> Unit,
     onAccessibilityAutoCaptureChanged: (Boolean) -> Unit,
     onOpenWeChat: () -> Unit,
@@ -514,8 +1205,8 @@ private fun NotificationCapturePage(
                 ) {
                     Text("通知访问", fontWeight = FontWeight.SemiBold)
                     Text(
-                        if (notificationAccessGranted) "已允许" else "未允许",
-                        color = if (notificationAccessGranted) {
+                        notificationConnectionLabel(notificationAccessGranted, notificationListenerConnected),
+                        color = if (notificationAccessGranted && notificationListenerConnected) {
                             MaterialTheme.colorScheme.primary
                         } else {
                             MaterialTheme.colorScheme.error
@@ -523,9 +1214,19 @@ private fun NotificationCapturePage(
                     )
                     if (notificationAccessGranted) {
                         Text(
-                            "微信通知会在后台自动解析，无需打开应用或手动开始采集。",
+                            if (notificationListenerConnected) {
+                                "通知服务已连接，微信通知会在后台自动解析，无需停留在记账页面。"
+                            } else {
+                                "已授权，但通知服务未连接，现在可能漏记。可以请求重连；仍未连接时，请在系统设置中重新开关通知访问。"
+                            },
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                        if (!notificationListenerConnected) {
+                            Button(onClick = onReconnectNotifications) { Text("重新连接通知") }
+                        }
+                        notificationRecoveryMessage?.let { message ->
+                            Text(message, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
+                        }
                         OutlinedButton(onClick = onOpenNotificationSettings) {
                             Text("管理通知访问")
                         }
@@ -538,6 +1239,27 @@ private fun NotificationCapturePage(
                             Text("打开通知访问设置")
                         }
                     }
+                }
+            }
+        }
+
+        item {
+            Card(shape = RoundedCornerShape(18.dp)) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Text("后台运行", fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "无需一直打开记账页面。在应用信息或电池设置中，检查“允许后台活动”和“自启动”。系统停止应用后需要重新打开；无障碍授权关闭后，需要你手动重新开启。",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        "微信通知必须提供交易信息才能解析；界面采集需要微信在前台。中断期间已消失的通知和页面无法自动补回。",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 13.sp,
+                    )
+                    OutlinedButton(onClick = onOpenAppSettings) { Text("打开应用信息") }
                 }
             }
         }
@@ -555,7 +1277,11 @@ private fun NotificationCapturePage(
                             Text("查看原始通知样本", fontWeight = FontWeight.SemiBold)
                             Text(
                                 if (notificationArmed) {
-                                    "正在等待下一条微信通知；后台自动解析仍然有效。"
+                                    if (notificationListenerConnected) {
+                                        "正在等待下一条微信通知；后台自动解析仍然有效。"
+                                    } else {
+                                        "已准备查看样本，但通知服务未连接，请先恢复连接。"
+                                    }
                                 } else {
                                     "仅供调试通知结构，原始通知不写入数据库。"
                                 },
@@ -638,8 +1364,9 @@ private fun NotificationCapturePage(
                     Text(
                         when {
                             !accessibilityAccessGranted -> "授权后仍需在应用内开启自动记账。"
-                            accessibilityServiceRunning -> "只读服务正在运行。"
-                            else -> "已授权，但服务当前未运行。"
+                            !accessibilityAutoCaptureEnabled -> "已授权，但应用内开关未开启，自动采集已暂停。"
+                            !accessibilityServiceRunning -> "已授权，但服务当前未连接。请进入无障碍设置重新开关此服务。"
+                            else -> "只读服务已连接，微信在前台时会自动采集。"
                         },
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -662,10 +1389,8 @@ private fun NotificationCapturePage(
                             enabled = accessibilityAccessGranted,
                         )
                     }
-                    if (!accessibilityAccessGranted) {
-                        Button(onClick = onOpenAccessibilitySettings) {
-                            Text("打开无障碍设置")
-                        }
+                    OutlinedButton(onClick = onOpenAccessibilitySettings) {
+                        Text("打开无障碍设置")
                     }
                 }
             }
@@ -858,61 +1583,6 @@ private fun NotificationSampleCard(sample: NotificationSample) {
 }
 
 @Composable
-private fun TransactionRow(transaction: PreviewTransaction) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = RoundedCornerShape(22.dp),
-    ) {
-        Column(modifier = Modifier.padding(18.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Surface(
-                    color = if (transaction.pending) {
-                        MaterialTheme.colorScheme.secondaryContainer
-                    } else {
-                        MaterialTheme.colorScheme.primaryContainer
-                    },
-                    shape = RoundedCornerShape(50),
-                ) {
-                    Text(
-                        transaction.category,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                        color = if (transaction.pending) {
-                            MaterialTheme.colorScheme.onSecondaryContainer
-                        } else {
-                            MaterialTheme.colorScheme.onPrimaryContainer
-                        },
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
-                    )
-                }
-                Text(
-                    transaction.amount,
-                    color = if (transaction.income) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.onSurface
-                    },
-                    fontSize = 21.sp,
-                    fontWeight = FontWeight.Bold,
-                )
-            }
-            Spacer(Modifier.height(14.dp))
-            Text(transaction.objectName, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
-            Spacer(Modifier.height(4.dp))
-            Text(
-                transaction.sourceAndTime,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 13.sp,
-            )
-        }
-    }
-}
-
-@Composable
 private fun CrowBrandMark(modifier: Modifier = Modifier) {
     Image(
         painter = painterResource(R.drawable.crow_brand),
@@ -934,21 +1604,6 @@ private fun PageHeader(title: String, onBack: () -> Unit) {
             Text(title, fontSize = 25.sp, fontWeight = FontWeight.Bold)
         }
         CrowBrandMark(Modifier.size(44.dp))
-    }
-}
-
-@Composable
-private fun PlaceholderPage(title: String, description: String, modifier: Modifier = Modifier) {
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(28.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Text(title, fontSize = 26.sp, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(10.dp))
-        Text(description, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 

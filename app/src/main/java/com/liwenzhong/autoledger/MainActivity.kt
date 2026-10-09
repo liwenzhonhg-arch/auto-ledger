@@ -11,6 +11,7 @@ import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.media.projection.MediaProjectionConfig
 import android.media.projection.MediaProjectionManager
+import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
 import android.view.accessibility.AccessibilityManager
@@ -29,6 +30,7 @@ import com.liwenzhong.autoledger.accessibility.WeChatAccessibilityService
 import com.liwenzhong.autoledger.capture.OcrCaptureStore
 import com.liwenzhong.autoledger.capture.OneShotCaptureService
 import com.liwenzhong.autoledger.notification.NotificationSample
+import com.liwenzhong.autoledger.notification.NotificationListenerStatus
 import com.liwenzhong.autoledger.notification.NotificationSampleStore
 import com.liwenzhong.autoledger.notification.WeChatNotificationListenerService
 import com.liwenzhong.autoledger.notification.captureNotificationSample
@@ -73,10 +75,14 @@ class MainActivity : ComponentActivity() {
             AutoLedgerTheme {
                 AutoLedgerApp(
                     notificationAccessGranted = notificationAccessGranted,
+                    notificationListenerConnected = NotificationListenerStatus.connected,
+                    notificationRecoveryMessage = NotificationListenerStatus.recoveryMessage,
                     accessibilityAccessGranted = accessibilityAccessGranted,
                     accessibilityAutoCaptureEnabled = accessibilityAutoCaptureEnabled,
                     accessibilityServiceRunning = AccessibilityServiceStatus.running,
                     onOpenNotificationSettings = ::openNotificationSettings,
+                    onReconnectNotifications = { NotificationListenerStatus.requestReconnect(this) },
+                    onOpenAppSettings = ::openAppSettings,
                     onOpenAccessibilitySettings = ::openAccessibilitySettings,
                     onAccessibilityAutoCaptureChanged = ::updateAccessibilityAutoCapture,
                     onOpenWeChat = ::openWeChat,
@@ -104,6 +110,7 @@ class MainActivity : ComponentActivity() {
         accessibilityAccessGranted = getSystemService(AccessibilityManager::class.java)
             .getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
             .any { ComponentName.unflattenFromString(it.id) == component }
+        NotificationListenerStatus.requestReconnect(this)
     }
 
     private fun openNotificationSettings() {
@@ -117,6 +124,16 @@ class MainActivity : ComponentActivity() {
     private fun openAccessibilitySettings() {
         try {
             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+        } catch (_: ActivityNotFoundException) {
+            startActivity(Intent(Settings.ACTION_SETTINGS))
+        }
+    }
+
+    private fun openAppSettings() {
+        try {
+            startActivity(
+                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")),
+            )
         } catch (_: ActivityNotFoundException) {
             startActivity(Intent(Settings.ACTION_SETTINGS))
         }

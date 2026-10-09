@@ -1,6 +1,9 @@
 package com.liwenzhong.autoledger.notification
 
 import android.app.Notification
+import android.app.NotificationManager
+import android.content.ComponentName
+import android.content.Context
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import androidx.compose.runtime.getValue
@@ -59,13 +62,58 @@ object NotificationSampleStore {
 internal fun captureNotificationSample(sample: NotificationSample): Boolean =
     NotificationSampleStore.capture(sample)
 
+object NotificationListenerStatus {
+    var connected by mutableStateOf(false)
+        private set
+    var recoveryMessage by mutableStateOf<String?>(null)
+        private set
+
+    internal fun updateConnection(isConnected: Boolean) {
+        connected = isConnected
+        recoveryMessage = null
+    }
+
+    fun requestReconnect(context: Context) {
+        val component = ComponentName(context, WeChatNotificationListenerService::class.java)
+        val granted = context.getSystemService(NotificationManager::class.java)
+            .isNotificationListenerAccessGranted(component)
+        if (!shouldRequestNotificationReconnect(granted, connected)) return
+        try {
+            NotificationListenerService.requestRebind(component)
+            recoveryMessage = "已请求重连，连接状态以系统回调为准。"
+        } catch (_: SecurityException) {
+            recoveryMessage = "重连未获允许，请检查通知访问设置。"
+        } catch (_: IllegalStateException) {
+            recoveryMessage = "系统暂时无法重连，请稍后重试。"
+        }
+    }
+
+    internal fun reportReplayFailure() {
+        recoveryMessage = "已连接，但补读现有通知失败，请重新检查通知访问设置。"
+    }
+}
+
+internal fun shouldRequestNotificationReconnect(granted: Boolean, connected: Boolean): Boolean =
+    granted && !connected
+
 class WeChatNotificationListenerService : NotificationListenerService() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val repository by lazy { LedgerRepository(applicationContext) }
 
     override fun onListenerConnected() {
         super.onListenerConnected()
-        activeNotifications.orEmpty().forEach(::onNotificationPosted)
+        NotificationListenerStatus.updateConnection(true)
+        try {
+            activeNotifications.orEmpty().forEach(::onNotificationPosted)
+        } catch (_: SecurityException) {
+            NotificationListenerStatus.reportReplayFailure()
+        }
+    }
+
+    override fun onListenerDisconnected() {
+        super.onListenerDisconnected()
+        NotificationListenerStatus.updateConnection(false)
+        NotificationListenerStatus.requestReconnect(this)
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification) {
@@ -90,6 +138,7 @@ class WeChatNotificationListenerService : NotificationListenerService() {
     }
 
     override fun onDestroy() {
+        NotificationListenerStatus.updateConnection(false)
         serviceScope.cancel()
         super.onDestroy()
     }
