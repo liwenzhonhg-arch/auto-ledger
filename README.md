@@ -1,157 +1,137 @@
-# Auto Ledger
+<p align="center">
+  <img src="app/src/main/res/drawable-nodpi/crow_brand.png" width="88" alt="Auto Ledger 乌鸦标志">
+</p>
 
-仅供本人 Android 手机使用的离线自动记账工具。
+<h1 align="center">Auto Ledger</h1>
 
-当前为开发版，主要支持微信；Android 16 / API 36 起可安装。源码采用 [MIT 许可证](LICENSE)，数据处理与权限见 [使用与隐私说明](PRIVACY.md)，组件和模型见 [第三方声明](THIRD_PARTY_NOTICES.md)。
+<p align="center"><strong>自动采集开销，账本留在本机。</strong></p>
+<p align="center">面向个人使用的 Android 离线记账应用 · 微信通知采集 · 单帧本地 OCR · 待确认账本</p>
 
-## 下载与开始使用
+<p align="center">
+  <a href="app/build.gradle.kts"><img alt="Android 16 / API 36+" src="https://img.shields.io/badge/Android-16%20%2F%20API%2036%2B-2F6F68?style=flat-square"></a>
+  <a href="gradle/libs.versions.toml"><img alt="Kotlin 2.3.20" src="https://img.shields.io/badge/Kotlin-2.3.20-2F6F68?style=flat-square"></a>
+  <a href="app/src/main/java/com/liwenzhong/autoledger/ui/AutoLedgerApp.kt"><img alt="UI Jetpack Compose" src="https://img.shields.io/badge/UI-Jetpack%20Compose-2F6F68?style=flat-square"></a>
+  <a href="PRIVACY.md"><img alt="Processing on device" src="https://img.shields.io/badge/Processing-on%20device-121318?style=flat-square"></a>
+  <a href="LICENSE"><img alt="License MIT" src="https://img.shields.io/badge/License-MIT-121318?style=flat-square"></a>
+</p>
 
-在 [GitHub Releases](https://github.com/liwenzhonhg-arch/auto-ledger/releases) 下载测试 APK。当前仓库为私有仓库，下载需要仓库访问权限。发布的是 Debug 测试包，应用内部版本号仍为 `0.1`；日期标签区分本次构建。
+<p align="center">
+  <a href="https://github.com/liwenzhonhg-arch/auto-ledger/releases">下载测试版</a> ·
+  <a href="docs/GETTING_STARTED.md">使用与构建</a> ·
+  <a href="docs/ARCHITECTURE.md">架构与取舍</a> ·
+  <a href="docs/VERIFICATION.md">验证记录</a> ·
+  <a href="PRIVACY.md">隐私说明</a>
+</p>
 
-1. 安装 APK；更新时使用同签名覆盖安装，保留账本，不卸载或清除数据。
-2. 在“采集”页进入通知访问设置，授权后确认状态为“已连接”。
-3. 需要微信页面采集时，开启系统无障碍权限及应用内“微信自动记账”，确认状态为“运行中”。
-4. 手动进入微信单笔交易结果或账单详情页，随后在 Auto Ledger 的“待确认”核对并确认账目。
+![Auto Ledger：从微信交易采集、人工核对到本地账本的流程示意](docs/assets/hero.svg)
 
-系统付款码监控提示只说明存在相关权限，不代表已经记账。以“已保存 · 待确认”和账目列表中的新记录为准。
+## 为什么做这个项目
 
-## 核心目标
+支付完成后再打开记账软件手动录入，很容易遗漏。Auto Ledger 尝试在手机本地完成这一步：优先解析微信交易通知；没有通知时，在用户显式开启后读取微信前台交易页面，必要时以单帧截图和离线 OCR 补充识别。
 
-目标是监听微信、支付宝、云闪付、农行和招商银行的交易通知，在手机本地生成账目，并通过商户记忆和关键词规则离线分类。目前主要实现微信采集和待确认流程，其他来源解析、自动分类和商户记忆尚未完成。
+识别出的记录先进入 **待确认**，由用户核对金额、对象和分类后确认入账。项目关注的是 Android 采集链路、数据一致性和隐私约束下的工程实现。
 
-## 隐私承诺
+> **开发版状态**：当前主要支持微信，最低 Android 16。手动记账保存、自动分类、其他支付来源和 CSV 导出仍在计划中。测试包及仓库目前为私有，访问需要授权。
 
-- 应用不申请网络权限。
-- 不连接服务器，不使用云同步、广告、统计或在线 AI。
-- 账本只保存在手机应用内部。
-- 不读取短信。
-- 微信无障碍仅在用户授权并开启应用内“微信自动记账”总开关后处理微信前台界面；可随时关闭，不点击、不输入、不滚动。
-- 无障碍读取不到文字时，可由微信前台界面事件触发单帧截图；截图只在内存中交给随 APK 分发的本地 OCR，识别完成立即销毁。用户主动单次截图继续作为兜底。
-- Android 云备份和数据迁移已关闭或排除账本数据。
+## 能做什么
 
-## 当前状态
+| 能力 | 当前实现 |
+| --- | --- |
+| 微信通知自动采集 | 系统授权且服务连接后自动解析；重连时补处理仍在通知栏的微信通知 |
+| 微信页面采集 | 前台事件触发，优先读取可见文字；无法形成候选时使用单帧离线 OCR |
+| 账目核对与持久化 | Room v1 保存待确认记录，支持修改金额、对象和分类后确认；金额使用整数分 |
+| 月度账本与统计 | 本月收支、日期分组明细、周／月／年支出趋势、分类排行 |
+| 采集状态诊断 | 区分授权、开关和连接状态；最近 12 条处理结果及独立的最近保存／失败时间 |
+| 本地隐私边界 | 无网络权限；原始通知、页面文字与截图不落盘；OCR 模型随 APK 分发 |
 
-2026-10-09：界面调整为账目、统计、采集和记一笔四个入口。首页使用紧凑的月度摘要和待确认入口；采集页新增最近处理结果、最近保存/失败时间及最多 12 条内存记录。参考 Cashew 的信息布局，以原生 Compose 实现，保留乌鸦、米白和蓝绿色品牌，不引入第三方 UI 依赖。手动记账仍为预览。
+首页和统计页目前包含 **待确认与已确认** 记录，展示时标注待确认金额；不能将这些汇总直接当作全部已核实的账目。
 
-修复了 OCR 文本中金额出现在较晚的“微信支付”标记之前时，指纹截取区间可能越界的问题；OCR 回调处理通过 `finally` 释放忙碌状态，写入异常转为可见失败结果，避免一次失败中断后续处理。此为源码中已发现的问题修复，尚不能证明是用户持续漏记的唯一原因；新版首页及采集页暗色界面已观察，真实单笔微信详情已生成待确认，短时重复打开未新增账目；长期后台稳定性仍需日常观察。
+## 工程上值得展开的四件事
 
-已创建 Android 16 / API 36 的最小 Kotlin + Jetpack Compose 工程，并完成：
+| 问题 | 实现与取舍 | 代码入口 |
+| --- | --- | --- |
+| 通知缺失或页面读不到文字 | 通知与前台页面两条路径；事件合并、单帧 OCR，同一时刻只处理一帧 | [通知服务](app/src/main/java/com/liwenzhong/autoledger/notification/WeChatNotificationListenerService.kt) · [无障碍服务](app/src/main/java/com/liwenzhong/autoledger/accessibility/WeChatAccessibilityService.kt) |
+| 内容相同不等于同一笔交易 | 页面内容指纹只合并 90 秒内的重复采集；查重和写入在同一 Room 事务中完成 | [Repository](app/src/main/java/com/liwenzhong/autoledger/repository/LedgerRepository.kt) · [去重测试](app/src/test/java/com/liwenzhong/autoledger/repository/ScreenObservationDeduplicationTest.kt) |
+| 一次识别失败不能卡住后续采集 | 在 `finally` 中释放位图及忙碌状态；入库失败返回明确状态，协程取消继续向上传播 | [OCR](app/src/main/java/com/liwenzhong/autoledger/capture/OfflineOcrRecognizer.kt) · [失败恢复测试](app/src/test/java/com/liwenzhong/autoledger/repository/IngestionRecoveryTest.kt) |
+| 排查漏记不能依赖保存敏感原文 | 内存诊断只保留来源、状态和时间；将“收到内容”“识别中”“已保存”分别呈现 | [诊断存储](app/src/main/java/com/liwenzhong/autoledger/capture/CaptureDiagnostics.kt) · [隐私说明](PRIVACY.md) |
 
-- 本月支出主卡、收入和采集状态快捷入口
-- 按日期分组的本月账目列表
-- 周/月/年支出趋势和分类排行
-- 分类宫格、金额键盘式手动记账界面预览（尚未接入保存）
-- 通知访问授权入口
-- 微信通知访问授权后的后台自动解析
-- 通知及界面采集的真实连接状态，通知断线/返回应用时的授权内重连请求
-- 仅针对微信的单次原始通知样本查看
-- 仅 Debug 版可见的固定虚构付款通知样本
-- 虚构通知的整数“分”解析、Room 唯一指纹去重、待确认编辑和确认
-- Room v1 本地账目持久化，应用进程结束后仍保留
-- 真机后台识别真实“微信支付：已支付 ¥13.10”通知；通知无商户时对象保持“未确定”
-- 乌鸦品牌图标和深墨黑、暖米白、低饱和蓝绿色界面
-- 未分类支出在列表显示为“支出”，确认页仍可修改对象和分类
-- 微信没有系统通知时的前台界面自动采集，以及单次内存样本查看
-- 微信界面不可读时由无障碍事件触发的单帧截图和本地 OCR
-- 用户主动授权的单帧屏幕捕获和离线中文 OCR
-- 原始通知、界面文字和 OCR 样本只保存在进程内存中；手动样本查看一条后停止，自动记账由应用内总开关控制
+### 一笔交易如何进入账本
 
-账目页面从本地 Room 数据库显示待确认和已确认账目，并突出本月总支出；图表页直接使用现有本地账目计算趋势和分类排行。解析器已覆盖固定虚构样本和本机真实“已支付 ¥13.10”通知；通知没有商户时不猜测对象。真机已验证微信零可读文字时可由无障碍截取单帧并完成本地 OCR；当前接受单笔交易结果，以及微信支付页中唯一一笔带金额的账单卡片，多笔历史账单列表直接忽略。手动记账目前只有界面预览，自动分类、手动记账保存和导出尚未实现。
-
-真机确认微信聊天页和账单 WebView 均可能返回零段可读文字；可访问页面优先直接读取，不可访问页面由微信前台界面事件触发单帧截图和纯本地 OCR。用户主动的单次屏幕捕获继续作为兜底。取得真实 OCR 样本前不猜测页面格式或静默入账。
-
-## 微信通知自动记账
-
-1. 进入“采集”页。
-2. 点击“打开通知访问设置”，开启“Auto Ledger 通知采集”。
-3. 确认首页“通知读取”显示“已连接”，此后无需停留在应用内；服务保持连接时，系统会在后台把微信通知交给本地解析器。
-4. 普通微信消息会被忽略，识别出的交易进入待确认账目。
-
-需要调试通知结构时，可另点“采集下一条微信通知”，临时查看 `title`、`text`、`bigText`、`subText` 和 `textLines`。该开关只控制原始样本展示，不影响后台自动解析；原始通知不会持续保存。
-
-## 后台中断与恢复
-
-“采集 → 最近处理”分别显示微信通知、微信界面和单次截图的当前结果。收到内容、正在识别均不代表入账；“已保存 · 待确认”才表示本次写入成功。失败不会覆盖最近保存时间；普通页面也不会清掉最近失败提示。
-
-结果包括重复忽略、未识别交易、忽略多笔账单、金额不明确、截图/识别失败和保存失败。诊断仅在内存保留状态码、来源和时间，进程重启即清空，不记录交易金额、原始文字、图片或异常消息。单次手动截图仍只提供样本，不自动保存。付款码页面的系统监控提示不代表识别到了已完成交易。
-
-首页分别展示“通知读取”和“界面采集”：授权未开启显示“未授权”，授权仍在但服务没有连接显示“未连接”。界面采集还会检查应用内开关，只有授权、开关和服务连接同时有效才显示“运行中”。通知权限不等于服务正在接收通知。
-
-通知服务断开或应用返回前台时，会在通知读取权限仍有效的前提下请求系统重新绑定；请求发出不等于重连成功。设置页提供“重新连接通知”和“打开应用信息”入口。重连成功后补读通知栏仍保留的微信通知，已消失的通知及中断期间的微信页面无法自动补回。
-
-realme 的后台限制需要在系统应用信息或电池设置里检查“允许后台活动”和“自启动”，实际入口以手机为准。强制停止后需要重新打开应用；系统无障碍授权关闭后需要用户手动重新开启。本应用不会定时拉活、自动改权限或绕过系统停止状态。
-
-## 页面采集的去重边界
-
-目前识别到的页面缺少可靠交易编号，内容相同不代表同一笔消费。页面指纹仅标识内容；数据库在首次采集后的 90 秒内复用该记录的指纹，窗口不随重复事件延长，之后同内容会作为新待确认记录保存。查询和写入使用同一 Room 事务，兼容旧版无后缀指纹，Room schema 保持 v1。通知来源的去重规则不受此改动影响。
-
-这是一项缺少交易标识时的兜底：90 秒内两笔同内容交易仍可能合并，90 秒后重新查看旧账单或长时间停留并触发采集也可能产生重复候选。页面记录时间仍是采集时间，不应当作已核实的支付时间；确认页会提醒核对。这些问题需要真实交易编号/时间样本才能进一步解决，不能以永久去重或固定时间桶冒充准确识别。
-
-## 使用模拟数据测试
-
-1. 进入“采集”页。
-2. 点击“模拟微信付款通知”；Debug 模拟不要求通知访问权限。
-3. 页面会显示固定虚构样本：测试商户、￥12.34。
-4. 点击“返回”，首页支出、待处理数量和最近账目会同步显示该样本。
-5. 点击“处理待确认”，可修改金额、对象和分类，再点击“确认入账”。
-6. 连续生成相同样本不会产生重复候选。
-7. 测试结束后可点击“清除模拟账目”；只删除对象为固定值“测试商户”的记录。
-
-该入口只在 Debug 版显示，直接复用单次内存采集入口，不发布系统通知，也不持久化原始通知；解析后的固定虚构账目会写入 Room。它用于验证样本进入应用后的持久化流程，不能证明真实微信通知一定包含金额。
-
-## 采集微信交易页面样本
-
-1. 进入“采集”页，在系统无障碍设置中开启“Auto Ledger 微信只读采集”。
-2. 返回应用，点击“开始并打开微信”。
-3. 完成交易并停留在交易结果页。
-4. 不要在微信内返回，直接从最近任务切回 Auto Ledger。
-
-服务在 XML 和代码中均限制为 `com.tencent.mm`，只声明窗口读取和截图能力，不声明手势、按键过滤或触摸探索能力。页面原始文字、截图和完整 OCR 原文只保存在进程内存中。
-
-该入口用于调试真实页面结构。正式的“微信自动记账”总开关开启后，无需每笔交易前点击采集；服务在微信文字不可读时改为事件触发的单帧本地 OCR，仍不执行界面操作。
-
-## 单次 OCR 采集
-
-1. 在微信支付结果或账单详情页停留。
-2. 从最近任务切回 Auto Ledger，进入“采集”页。
-3. 点击“截取当前微信页面”，同意 Android 的单次屏幕共享提示。
-4. 应用切回微信并只截取一帧，本地 OCR 完成后立即释放截图和投屏会话。
-5. 返回 Auto Ledger 查看识别结果；确认前不会生成正式账目。
-
-OCR 使用随 APK 分发的 Tesseract 简体中文模型，不下载模型，不上传截图、识别文字或运行指标。
-
-## 目标设备
-
-- 真我 GT8
-- Android 16
-- realme UI 7.0
-
-## 本机构建
-
-已安装 Android Studio Quail 2、Android SDK 36 和 Platform Tools。
-
-```powershell
-$env:JAVA_HOME='C:\Program Files\Android\Android Studio\jbr'
-.\gradlew.bat :app:assembleDebug --no-daemon --console=plain
-.\gradlew.bat :app:testDebugUnitTest :app:lintDebug --no-daemon --console=plain
+```mermaid
+flowchart TB
+    N[微信通知] --> NP[白名单过滤与通知解析]
+    W[已授权开启的微信前台采集] --> T[可见文字 / 单帧本地 OCR]
+    T --> SP[交易标记 / 单笔 / 明确金额]
+    NP --> R[Repository · 去重与写入]
+    SP --> R
+    R --> P[(Room · 待确认)]
+    P --> U[用户核对金额、对象与分类]
+    U --> C[(已确认账目)]
+    classDef input fill:#E1EBE3,stroke:#8BAE99,color:#173F35
+    classDef pending fill:#F1E0BF,stroke:#C9A76C,color:#634819
+    classDef stored fill:#2F6F68,stroke:#2F6F68,color:#FFFDF7
+    class N,NP,W,T,SP input
+    class P,U pending
+    class R,C stored
 ```
 
-Debug APK：`app\build\outputs\apk\debug\app-debug.apk`
+用户主动发起的 `MediaProjection` 单次截图是独立的 **样本查看** 路径，目前不自动写入账本。完整数据流、通知与页面去重差异见 [架构与设计取舍](docs/ARCHITECTURE.md)。
 
-### 最新本地验证（2026-10-09）
+## 快速体验
 
-- 21 个单元测试通过；Lint 为 0 errors / 12 warnings（版本、资源和 KTX 写法建议，其中 3 条为本次 OCR 位图调用的 KTX 建议）；Debug APK 构建成功。覆盖金额行顺序、写入失败恢复、诊断保留、负号金额及深色背景判断。
-- 合并 Manifest 无网络权限，云备份关闭、数据迁移排除账本数据；Room v1 schema 未变。正确性、安全检查和只读收尾审计完成。
-- 2026-10-09 USB 真机覆盖安装成功（APK SHA-256 `F4FA4F716404EE766A031FEB738917383454E1DBFA96C5228D19F56CBF884C2C`），首页及采集页暗色界面已观察，原有账目数量保持一致。安装前通知已授权但未连接，重新操作系统授权后首页显示通知已连接、界面采集运行中。真实微信单笔详情经 OCR 自动保存为待确认（账目 33→34，待确认 31→32），90 秒内重复打开显示“重复忽略”，数量不变；多笔账单页面被忽略。长期后台稳定性、新支付通知端到端和飞行模式仍待验证。手动记账仍为预览。
+1. 从 [Releases](https://github.com/liwenzhonhg-arch/auto-ledger/releases) 下载 Debug 测试 APK，安装到 Android 16 或更高版本的测试设备。
+2. 在“采集”页开启通知访问，确认连接状态；需要页面采集时，再开启系统无障碍权限与应用内“微信自动记账”。
+3. 手动打开微信单笔交易详情页，返回 Auto Ledger，在“待确认”中核对记录。
 
-OCR 使用稀疏文本模式，深色页面仅在内存中反色后识别并回收位图；单笔支出详情须同时满足状态、支付时间和支付方式标记，才接受金额栏的独立负号金额。兼容本次观察到的支付方式标签单字 OCR 误识别。记录时间仍为采集时间，交易对象不确定时须在待确认中核对。
+不依赖真实交易的演示路径：Debug 版“采集 → 模拟微信付款通知”会注入 **测试商户 / ￥12.34**，可演示解析、待确认、编辑、确认和持久化。它验证应用内链路，不代表系统已经投递真实微信通知。
 
-### 历史验证范围（2026-09-27）
+更新已有账本时使用同签名覆盖安装。操作说明、通知恢复、样本采集与构建环境见 [使用与构建](docs/GETTING_STARTED.md)。
 
-- `verified-current`：14 个单元测试通过；Lint 为 0 errors / 9 warnings；Debug APK 构建成功；新增仪器测试代码编译通过。实际 DAO 查询在电脑端 SQLite 中验证了旧指纹、带后缀指纹、乱序结果、90 秒边界和来源隔离。合并 Manifest 无网络权限，备份关闭，Room v1 schema 无变化。
-- `verified-current`：代码正确性与安全边界检查、只读 neat-freak 文档/规则/工作区审计完成；无本次临时文件待清理，原有未提交改动保留。
-- `verified-current`：设备释放后已校验完整 APK 的 SHA-256 并覆盖安装，新版启动成功，原数据库及已有待确认账目保留；首页实际显示“界面采集未授权、通知读取未连接”，不再误报运行中。
-- `pending`：用户恢复系统通知访问连接和无障碍授权后的后台采集验证，以及 Room 并发仪器测试。安装成功不代表采集服务已恢复。USB 整包推送失败，本次通过 Base64 小块传输后校验安装，安装临时包和观察截图已清理。
-- `out-of-scope`：其他项目的手机检查、长期记忆修改、Git 提交或发布。保留的提示为 SDK XML 工具版本提示，以及 Lint 的依赖版本、资源和 KTX 写法建议。
+## 验证与已知边界
 
-下一步：接入手动记账保存，并加入最小离线分类规则和商户分类记忆。
+| 验证层次 | 记录与范围 |
+| --- | --- |
+| 本地检查（2026-10-09） | 21 个单元测试通过；Lint 0 errors / 12 warnings；Debug APK 构建通过 |
+| 配置检查 | 合并 Manifest 无网络权限；云备份关闭，迁移规则排除账本；Room schema 为 v1 |
+| 真机记录（2026-10-09） | 真我 GT8 / Android 16：单笔微信详情经 OCR 生成待确认；90 秒内重复打开未新增；多笔账单页被忽略 |
+| 尚待验证 | 长期后台稳定性、飞行模式、Room 并发仪器测试，以及当前版本新支付通知的端到端回归 |
+
+**去重边界**：当前页面没有可靠交易编号，90 秒内同内容的两笔交易可能被合并，超过窗口重看旧账单也可能生成新候选。页面记录时间是采集时间，交易对象未知时保留“未确定”，需要核对。
+
+已验证场景、可复现命令和测试证据集中在 [验证记录](docs/VERIFICATION.md)。真机条目引用此前项目验证记录，本次仓库整理未重做手机操作；本地构建通过不等于所有设备上的后台采集都可靠。
+
+## 本地开发
+
+使用 JDK 17 或兼容版本、Android SDK 36，以及仓库自带的 Gradle Wrapper。首次构建需要下载依赖；应用运行时离线。
+
+```powershell
+# Windows：使用 Android Studio 自带的 JBR，路径按本机安装位置调整
+$env:JAVA_HOME='C:\Program Files\Android\Android Studio\jbr'
+.\gradlew.bat :app:testDebugUnitTest :app:lintDebug :app:assembleDebug --no-daemon --console=plain
+```
+
+APK：`app/build/outputs/apk/debug/app-debug.apk`。Android Studio 导入、SDK 配置和 macOS / Linux 命令见 [构建指南](docs/GETTING_STARTED.md#从源码构建)。
+
+| 技术 | 用途 |
+| --- | --- |
+| Kotlin / Jetpack Compose | 原生界面与采集服务 |
+| Coroutines / Flow | 异步写入与账目状态订阅 |
+| Room / SQLite | 本地事务、唯一索引与持久化 |
+| Tesseract4Android / tessdata_fast | 随包分发的离线中文 OCR |
+| JUnit / Android Lint | 解析、门禁、去重、失败恢复与静态检查 |
+
+保持单一 `app` 模块，按采集、解析、仓储和界面分工。目录导航见 [架构文档](docs/ARCHITECTURE.md#源码导航)。
+
+## 接下来
+
+- [ ] 接通手动记账保存。
+- [ ] 增加本地分类规则与商户分类记忆。
+- [ ] 基于真实、脱敏样本扩展其他支付来源。
+- [ ] 实现 CSV 导出、本地备份与恢复。
+- [ ] 完成飞行模式、长期后台及 Room 并发的设备端验证。
+
+## 许可证与致谢
+
+源码采用 [MIT License](LICENSE)。OCR 运行时和模型的版本、许可证与校验值见 [第三方声明](THIRD_PARTY_NOTICES.md)。界面信息布局参考 Cashew，以原生 Compose 实现乌鸦品牌、暖米白与蓝绿色视觉。
+
+<p align="center"><sub>交易在本机处理，识别结果由你确认。</sub></p>

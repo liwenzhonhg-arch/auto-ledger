@@ -1,0 +1,93 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="860" viewBox="0 0 1600 860" fill="none" role="img" aria-labelledby="title desc">
+  <title id="title">Auto Ledger 数据流与存储边界</title>
+  <desc id="desc">微信通知经白名单与通知解析，微信前台事件经权限检查、可见文字或单帧 OCR 生成候选；两条路径汇入 Repository，再保存为 Room 待确认，由用户确认。用户主动的 MediaProjection 截图仅提供内存样本，不入库。</desc>
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+      <path d="M0 0L8 4L0 8" fill="#2F6F68"/>
+    </marker>
+    <marker id="mutedArrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+      <path d="M0 0L8 4L0 8" fill="#8A877E"/>
+    </marker>
+  </defs>
+  <rect width="1600" height="860" rx="26" fill="#F4F0E7"/>
+  <g font-family="Segoe UI, Noto Sans SC, Microsoft YaHei, Arial, sans-serif">
+    <text x="64" y="67" fill="#2F6F68" font-size="16" font-weight="600" letter-spacing="3">AUTO LEDGER / DATA FLOW</text>
+    <text x="64" y="121" fill="#121318" font-size="36" font-weight="700">采集在本机，确认在用户。</text>
+    <text x="1536" y="117" text-anchor="end" fill="#667469" font-size="17">单 app 模块 · 无服务器 · Room v1</text>
+    <path d="M64 152H1536" stroke="#D8D4C9"/>
+
+    <g fill="#64756A" font-size="16" letter-spacing="1.4">
+      <text x="64" y="195">01 / 系统入口</text>
+      <text x="436" y="195">02 / 解析与筛选</text>
+      <text x="850" y="195">03 / 统一写入</text>
+      <text x="1234" y="195">04 / 账目状态</text>
+    </g>
+
+    <rect x="64" y="227" width="300" height="118" rx="18" fill="#FFFDF7" stroke="#D7D6CA"/>
+    <text x="88" y="269" fill="#121318" font-size="25" font-weight="600">微信交易通知</text>
+    <text x="88" y="300" fill="#5E6A61" font-size="16">系统投递 · 通知访问授权</text>
+    <text x="88" y="325" fill="#5E6A61" font-size="16">只接受 com.tencent.mm</text>
+
+    <rect x="436" y="227" width="338" height="118" rx="18" fill="#E1EBE3" stroke="#C7D9CC"/>
+    <text x="460" y="269" fill="#173F35" font-size="25" font-weight="600">通知解析器</text>
+    <text x="460" y="300" fill="#476756" font-size="16">交易标记 · 整数分 · 方向</text>
+    <text x="460" y="325" fill="#476756" font-size="16">无法确定的字段保留未知</text>
+
+    <rect x="64" y="401" width="300" height="160" rx="18" fill="#FFFDF7" stroke="#D7D6CA"/>
+    <text x="88" y="445" fill="#121318" font-size="25" font-weight="600">微信前台事件</text>
+    <text x="88" y="480" fill="#5E6A61" font-size="16">授权 + 开关 + 解锁 + 活动窗口</text>
+    <text x="88" y="507" fill="#5E6A61" font-size="16">事件合并 · 同时只处理一帧</text>
+    <text x="88" y="534" fill="#5E6A61" font-size="16">不点击、不输入、不滚动</text>
+
+    <rect x="436" y="401" width="338" height="160" rx="18" fill="#E1EBE3" stroke="#C7D9CC"/>
+    <text x="460" y="445" fill="#173F35" font-size="25" font-weight="600">可见文字 / 本地 OCR</text>
+    <text x="460" y="480" fill="#476756" font-size="16">文字优先，无法解析时单帧识别</text>
+    <text x="460" y="507" fill="#476756" font-size="16">交易标记 + 单笔 + 明确金额</text>
+    <text x="460" y="534" fill="#476756" font-size="16">多笔账单与普通页面忽略</text>
+
+    <rect x="850" y="263" width="300" height="266" rx="22" fill="#173F35"/>
+    <text x="878" y="311" fill="#F4F0E7" font-size="27" font-weight="600">Repository</text>
+    <path d="M878 333H1122" stroke="#427063"/>
+    <text x="878" y="372" fill="#D7E8DA" font-size="19">通知：唯一指纹</text>
+    <text x="878" y="407" fill="#D7E8DA" font-size="19">页面：90 秒合并窗口</text>
+    <text x="878" y="443" fill="#D7E8DA" font-size="19">页面查重 + 写入同事务</text>
+    <text x="878" y="493" fill="#A2C5B5" font-size="15">无可靠交易 ID，仍需人工核对</text>
+
+    <rect x="1234" y="245" width="302" height="109" rx="18" fill="#F1E0BF" stroke="#DDC79D"/>
+    <text x="1258" y="289" fill="#634819" font-size="25" font-weight="600">PENDING</text>
+    <text x="1258" y="324" fill="#786039" font-size="17">已持久化，等待核对</text>
+    <rect x="1234" y="447" width="302" height="109" rx="18" fill="#D2E5D9" stroke="#B9D2C2"/>
+    <text x="1258" y="491" fill="#173F35" font-size="25" font-weight="600">CONFIRMED</text>
+    <text x="1258" y="526" fill="#476756" font-size="17">人工确认后的正式账目</text>
+
+    <g stroke="#2F6F68" stroke-width="2.5" marker-end="url(#arrow)">
+      <path d="M376 286H424"/>
+      <path d="M376 480H424"/>
+      <path d="M786 286H808V352H838"/>
+      <path d="M786 480H808V442H838"/>
+      <path d="M1162 396H1195V299H1222"/>
+      <path d="M1385 366V429"/>
+    </g>
+    <rect x="1295" y="384" width="181" height="32" rx="16" fill="#F4F0E7"/>
+    <text x="1385" y="406" text-anchor="middle" fill="#2F6F68" font-size="16">用户核对与编辑</text>
+
+    <path d="M64 599H1536" stroke="#C8C5B9" stroke-dasharray="7 7"/>
+    <text x="64" y="637" fill="#81765F" font-size="15" letter-spacing="2">独立调试入口 / 不自动入库</text>
+    <g fill="#EBE6DA" stroke="#D8D1C0">
+      <rect x="64" y="664" width="300" height="72" rx="14"/>
+      <rect x="436" y="664" width="338" height="72" rx="14"/>
+      <rect x="850" y="664" width="686" height="72" rx="14"/>
+    </g>
+    <g fill="#655E4D" font-size="20">
+      <text x="88" y="707">用户主动授权单次截图</text>
+      <text x="460" y="707">MediaProjection + OCR</text>
+      <text x="878" y="707">内存样本查看 · 处理后释放会话与位图</text>
+    </g>
+    <g stroke="#8A877E" stroke-width="2" stroke-dasharray="5 5" marker-end="url(#mutedArrow)">
+      <path d="M376 700H424"/>
+      <path d="M786 700H838"/>
+    </g>
+    <circle cx="73" cy="800" r="6" fill="#2F6F68"/>
+    <text x="92" y="806" fill="#5B6D60" font-size="17">原始通知、截图与完整 OCR 文本不落盘；数据库只保留结构化账目。</text>
+  </g>
+</svg>

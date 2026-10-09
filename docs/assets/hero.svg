@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="680" viewBox="0 0 1600 680" fill="none" role="img" aria-labelledby="title desc">
+  <title id="title">Auto Ledger — 自动采集开销，账本留在本机</title>
+  <desc id="desc">墨黑、暖米白与蓝绿色的项目封面。右侧是采集、核对、入账三步流程示意，不是应用截图。</desc>
+  <defs>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M40 0H0V40" stroke="#86C5BA" stroke-opacity=".07"/>
+    </pattern>
+    <marker id="arrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+      <path d="M0 0L7 3.5L0 7" fill="#86C5BA"/>
+    </marker>
+  </defs>
+  <rect width="1600" height="680" rx="28" fill="#121318"/>
+  <path d="M856 0H1572C1587 0 1600 13 1600 28V652C1600 667 1587 680 1572 680H856Z" fill="#172622"/>
+  <path d="M856 0H1572C1587 0 1600 13 1600 28V652C1600 667 1587 680 1572 680H856Z" fill="url(#grid)"/>
+  <path d="M856 48V632" stroke="#86C5BA" stroke-opacity=".16"/>
+  <g font-family="Segoe UI, Noto Sans SC, Microsoft YaHei, Arial, sans-serif">
+    <rect x="72" y="65" width="8" height="24" rx="4" fill="#86C5BA"/>
+    <text x="100" y="85" fill="#86C5BA" font-size="19" font-weight="600" letter-spacing="3">AUTO LEDGER</text>
+    <text x="72" y="223" fill="#F4F0E7" font-size="69" font-weight="700">自动采集开销。</text>
+    <text x="72" y="316" fill="#F4F0E7" font-size="69" font-weight="700">账本留在本机。</text>
+    <path d="M76 353H211" stroke="#86C5BA" stroke-width="5" stroke-linecap="round"/>
+    <text x="76" y="406" fill="#BBC5C0" font-size="24">从微信交易到个人账本，</text>
+    <text x="76" y="446" fill="#BBC5C0" font-size="24">识别在手机完成，结果由你确认。</text>
+    <g fill="#1F2B29" stroke="#354A44">
+      <rect x="76" y="502" width="156" height="44" rx="22"/>
+      <rect x="246" y="502" width="181" height="44" rx="22"/>
+      <rect x="441" y="502" width="155" height="44" rx="22"/>
+    </g>
+    <g fill="#C7E4DC" font-size="18" text-anchor="middle">
+      <text x="154" y="530">微信通知采集</text>
+      <text x="336.5" y="530">单帧离线 OCR</text>
+      <text x="518.5" y="530">待确认账本</text>
+    </g>
+    <text x="76" y="618" fill="#899790" font-size="15" letter-spacing="2">ANDROID · KOTLIN · COMPOSE · ROOM</text>
+
+    <text x="924" y="87" fill="#AAC2B8" font-size="16" letter-spacing="2">一笔账的旅程</text>
+    <text x="1528" y="87" fill="#8EA79C" font-size="14" text-anchor="end">流程示意</text>
+
+    <rect x="924" y="123" width="604" height="128" rx="18" fill="#F4F0E7"/>
+    <rect x="951" y="155" width="56" height="56" rx="16" fill="#E0E8E0"/>
+    <path d="M968 171H990V188H978L971 194V188H968Z" stroke="#2F6F68" stroke-width="2.5" stroke-linejoin="round"/>
+    <path d="M973 177H985M973 182H982" stroke="#2F6F68" stroke-width="2" stroke-linecap="round"/>
+    <text x="1028" y="170" fill="#68766D" font-size="13" letter-spacing="2">01 / CAPTURE</text>
+    <text x="1028" y="202" fill="#121318" font-size="27" font-weight="650">通知与前台页面</text>
+    <text x="1028" y="231" fill="#59665E" font-size="16">可见文字优先，单帧 OCR 补充识别</text>
+    <path d="M1226 262V287" stroke="#86C5BA" stroke-width="2" marker-end="url(#arrow)"/>
+
+    <rect x="924" y="304" width="604" height="128" rx="18" fill="#F4F0E7"/>
+    <rect x="951" y="336" width="56" height="56" rx="16" fill="#F2E2C7"/>
+    <rect x="968" y="350" width="22" height="27" rx="3" stroke="#9A6A24" stroke-width="2.5"/>
+    <path d="M974 359H984M974 365H984M974 371H980" stroke="#9A6A24" stroke-width="2" stroke-linecap="round"/>
+    <text x="1028" y="351" fill="#68766D" font-size="13" letter-spacing="2">02 / REVIEW</text>
+    <text x="1028" y="383" fill="#121318" font-size="27" font-weight="650">先存为待确认</text>
+    <text x="1028" y="412" fill="#59665E" font-size="16">核对金额、交易对象与分类</text>
+    <path d="M1226 443V468" stroke="#86C5BA" stroke-width="2" marker-end="url(#arrow)"/>
+
+    <rect x="924" y="485" width="604" height="128" rx="18" fill="#2F6F68"/>
+    <rect x="951" y="517" width="56" height="56" rx="16" fill="#437F74"/>
+    <path d="M968 545L976 553L991 536" stroke="#F4F0E7" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="1028" y="532" fill="#BCDFD4" font-size="13" letter-spacing="2">03 / CONFIRM</text>
+    <text x="1028" y="564" fill="#FFFDF6" font-size="27" font-weight="650">确认入账，本地保留</text>
+    <text x="1028" y="593" fill="#D3E8DF" font-size="16">Room 持久化 · 整数分 · 唯一指纹</text>
+  </g>
+</svg>
