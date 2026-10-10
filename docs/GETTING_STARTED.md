@@ -6,7 +6,7 @@
 
 最低版本为 **Android 16 / API 36**。已记录的目标设备为真我 GT8、Android 16、realme UI 7.0；其他设备兼容性未作全面验证。
 
-从 [GitHub Releases](https://github.com/liwenzhonhg-arch/auto-ledger/releases) 获取 Debug 测试 APK。仓库当前为私有，下载需要访问权限；应用内部版本号为 `0.1`，日期标签区分构建。更新使用同签名覆盖安装，清除数据或卸载会删除本地账本；当前没有备份、恢复和导出功能。
+从 [GitHub Releases](https://github.com/liwenzhonhg-arch/auto-ledger/releases) 直接下载 Debug 测试 APK，无需仓库访问授权。源码采用 [MIT 许可证](../LICENSE) 公开提供；应用内部版本号为 `0.1`，日期标签区分构建。更新使用同签名覆盖安装，清除数据或卸载会删除本地账本；当前没有备份、恢复和导出功能。
 
 1. 打开“采集 → 通知访问”，在系统设置授权 Auto Ledger 通知采集。
 2. 返回应用，确认通知状态为“已连接”。此后微信通知由系统后台投递时自动进入解析，无需每笔点击采集。
